@@ -18,6 +18,7 @@ function routeName() {
   const name = location.hash.replace(/^#\/?/, '');
   return Object.hasOwn(views, name) ? name : 'today';
 }
+let shown = routeName(); // 지금 그려져 있는 화면. 주소가 먼저 바뀐 뒤에 오는 입력 이벤트도 이 화면이 받는다.
 
 // 다시 그린 뒤에도 키보드 포커스가 같은 버튼에 남도록 data-* 속성으로 찾아간다
 const FOCUS_KEYS = { action: 'action', field: 'field', value: 'value', id: 'id', areaField: 'area-field' };
@@ -52,6 +53,8 @@ function applyTheme(theme) {
 
 let renderedDay = todayKey();
 let renderLater = false;
+let pressing = false;
+const RELEASE_DELAY = 100; // 터치는 손을 뗀 뒤에 클릭이 온다. 그 전에 그리면 옆 항목이 눌린다.
 
 const editing = () => {
   const el = document.activeElement;
@@ -64,10 +67,43 @@ function showSaveWarning() {
   if (warning) warning.hidden = !hasSaveFailed();
 }
 
+/** 입력 중인 칸이 든 덩어리만 남기고 나머지를 새로 그린다. 덩어리 구성이 바뀌었으면 입력이 끝날 때까지 기다린다. */
+function renderAround(field) {
+  if (shown !== routeName() || todayKey() !== renderedDay) return; // 자정을 넘겼다면 입력 중인 칸은 지난날의 칸이니 그대로 두고 나중에 그린다
+  const next = document.createElement('template');
+  try {
+    next.innerHTML = views[shown].render(getState());
+  } catch (err) {
+    console.error(err);
+    return;
+  }
+  const parts = [...next.content.children];
+  const now = [...root.children];
+  if (parts.length !== now.length) return;
+  resetTips();
+  now.forEach((el, i) => {
+    if (!el.contains(field)) el.replaceWith(parts[i]);
+  });
+  views[shown].mount?.(root, getState());
+}
+
 // 타이머가 끝나거나 다른 탭이 저장해도 입력 중인 칸은 그대로 둔다. 다시 그리면 키보드가 내려가고 글자가 사라진다.
 function requestRender({ background = false } = {}) {
-  if (background && editing()) renderLater = true;
-  else render();
+  if (background && pressing) renderLater = true;
+  else if (background && editing()) {
+    renderLater = true;
+    renderAround(document.activeElement);
+  } else render();
+}
+
+// 누르는 사이에 화면을 바꾸면 손을 뗀 곳이 다른 요소가 되어 클릭이 사라지므로, 손을 뗀 뒤에 그린다.
+// 포커스가 다음 칸으로 옮겨가는 중일 수도 있으니 옮겨간 뒤에 확인한다.
+function catchUp(delay = 0) {
+  setTimeout(() => {
+    if (!renderLater || pressing) return;
+    if (editing()) renderAround(document.activeElement);
+    else render();
+  }, delay);
 }
 
 function render() {
@@ -76,6 +112,7 @@ function render() {
   const state = getState();
   const name = routeName();
   const view = views[name];
+  shown = name;
   const focus = focusSelector(document.activeElement);
   applyTheme(state.theme);
   resetTips();
@@ -115,22 +152,28 @@ function handleShared(e) {
 for (const type of ['click', 'input', 'change', 'submit']) {
   root.addEventListener(type, (e) => {
     if (type === 'click' && handleShared(e)) return;
-    views[routeName()].on?.[type]?.(e);
+    views[shown].on?.[type]?.(e);
   });
 }
 
-root.addEventListener('focusout', () => {
-  // 포커스가 다음 칸으로 옮겨가는 중일 수 있으니 옮겨간 뒤에 확인한다
-  setTimeout(() => {
-    if (renderLater && !editing()) render();
-  });
-});
+root.addEventListener('focusout', () => catchUp());
+addEventListener('pointerdown', () => {
+  pressing = true;
+}, true);
+function release() {
+  pressing = false;
+  catchUp(RELEASE_DELAY);
+}
+addEventListener('pointerup', release, true);
+addEventListener('pointercancel', release, true);
+addEventListener('blur', release); // 캡처하면 입력칸의 blur까지 받아 누르는 중에 그리게 된다
 
 subscribe((_, { quiet, background }) => {
   if (!quiet) requestRender({ background });
   showSaveWarning();
 });
 addEventListener('hashchange', () => {
+  if (root.contains(document.activeElement)) document.activeElement.blur(); // 뒤로 가기로 떠나도 입력하던 칸이 저장되게 한다
   render();
   scrollTo(0, 0);
 });
@@ -149,7 +192,7 @@ addEventListener('resize', () => {
   if (root.clientWidth === lastWidth) return;
   lastWidth = root.clientWidth;
   resetTips();
-  views[routeName()].drawCharts?.(root);
+  views[shown].drawCharts?.(root);
 });
 
 setRefresher(requestRender);

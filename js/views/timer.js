@@ -1,5 +1,5 @@
 // 집중 타이머: 포모도로·스톱워치. 시작 시각을 저장해두어 새로고침하거나 다른 화면으로 가도 이어진다.
-import { activeAreas, addEntry, areaById } from '../store.js';
+import { activeAreas, addEntry, areaById, getState } from '../store.js';
 import { toKey, todayKey } from '../dates.js';
 import { esc, fmtHM, sum } from '../util.js';
 import { areaColor, entryList, refresh, savedToast, toast } from '../ui.js';
@@ -11,22 +11,23 @@ const PRESETS = [
   { min: 0, label: '스톱워치', rest: 5 },
 ];
 const RING = 2 * Math.PI * 108;
+const MAX_BANKED = 3650 * 864e5; // 저장된 값이 깨졌을 때 날짜 계산이 무너지지 않게 막는 선
 
 // phase: idle(대기) | running(집중) | paused(일시정지) | break(휴식)
 const fresh = () => ({ areaId: null, title: '', preset: 25, phase: 'idle', startedAt: 0, banked: 0, finished: false });
 
 // 저장된 값도 화면과 기록에 그대로 쓰이므로 형식이 틀린 값은 버린다
 function clean(x) {
-  const time = (v) => (Number.isFinite(v) && v > 0 ? v : 0);
+  const time = (v, max) => (Number.isFinite(v) && v > 0 && v <= max ? v : 0);
   const phase = ['running', 'paused', 'break'].includes(x.phase) ? x.phase : 'idle';
-  const startedAt = time(x.startedAt);
+  const startedAt = time(x.startedAt, Date.now() + 864e5);
   return {
     areaId: typeof x.areaId === 'string' ? x.areaId : null,
     title: typeof x.title === 'string' ? x.title.slice(0, 60) : '',
     preset: PRESETS.some((p) => p.min === x.preset) ? x.preset : fresh().preset,
     phase: (phase === 'running' || phase === 'break') && !startedAt ? 'idle' : phase,
     startedAt,
-    banked: time(x.banked),
+    banked: time(x.banked, MAX_BANKED),
     finished: x.finished === true,
   };
 }
@@ -40,22 +41,33 @@ function readStored() {
   }
 }
 
+const stage = ({ phase, startedAt }) => `${phase}:${startedAt}`;
 let saveWorks = true;
+let savedStage = ''; // 저장소가 알고 있는 마지막 단계
 function save() {
   try {
     localStorage.setItem(KEY, JSON.stringify(t));
     saveWorks = true;
+    savedStage = stage(t);
   } catch {
     saveWorks = false; // 저장이 막혀도 타이머는 동작
   }
 }
-// 저장이 막혔다면 저장된 값은 이 세션보다 오래된 것이니 믿지 않는다
-const storedNow = () => (saveWorks ? readStored() : null);
+/** 저장소의 값을 따른다 */
+function follow(record) {
+  t = record;
+  saveWorks = true;
+  savedStage = stage(t);
+}
+// 저장되지 못해 다른 탭은 모르는 단계라면, 저장된 값은 이보다 오래된 것이니 믿지 않는다
+const onlyHere = () => !saveWorks && t.phase !== 'idle' && stage(t) !== savedStage;
+const storedNow = () => (onlyHere() ? null : readStored());
 
-let t = readStored() ?? fresh();
+let t = fresh();
+follow(readStored() ?? fresh());
 
 const ticking = () => t.phase === 'running' || t.phase === 'break';
-const elapsed = () => t.banked + (ticking() ? Date.now() - t.startedAt : 0);
+const elapsed = () => t.banked + (ticking() ? Math.max(0, Date.now() - t.startedAt) : 0);
 const preset = () => PRESETS.find((p) => p.min === t.preset) || PRESETS[0];
 const targetMs = () => (t.phase === 'break' ? preset().rest : t.preset) * 60000; // 0이면 스톱워치
 const countsUp = () => targetMs() === 0;
@@ -109,37 +121,44 @@ function chime() {
 // 폰 화면이 꺼지면 앱이 멈춰 알림음을 낼 수 없다. 시간이 도는 동안에는 화면을 켜둔다.
 // 앱을 벗어나면 브라우저가 풀어버리므로, 돌아왔을 때 다음 틱에서 다시 잡는다.
 let wakeLock = null;
-let wakeWaiting = false; // 요청 중이거나 거부된 상태. 거부됐다면 앱으로 돌아오거나 타이머가 멈출 때까지 다시 묻지 않는다.
+let wakePending = false; // 요청은 한 번에 하나만. 겹치면 놓지 못하는 잠금이 남는다.
+let wakeRefused = false; // 거부됐다면 사용자가 다시 누르거나 앱으로 돌아올 때까지 묻지 않는다
 
 async function syncWakeLock() {
   if (!navigator.wakeLock) return;
   if (!ticking()) {
     wakeLock?.release();
     wakeLock = null;
-    wakeWaiting = false;
+    wakeRefused = false;
     return;
   }
-  if (wakeLock || wakeWaiting || document.hidden) return;
-  wakeWaiting = true;
+  if (wakeLock || wakePending || wakeRefused || document.hidden) return;
+  wakePending = true;
   try {
-    wakeLock = await navigator.wakeLock.request('screen');
-    wakeWaiting = false;
-    wakeLock.addEventListener('release', () => {
-      wakeLock = null;
+    const lock = await navigator.wakeLock.request('screen');
+    if (!ticking()) {
+      lock.release(); // 기다리는 사이에 세션이 끝났다
+      return;
+    }
+    wakeLock = lock;
+    lock.addEventListener('release', () => {
+      if (wakeLock === lock) wakeLock = null;
     });
   } catch {
-    /* 저전력 모드 등에서는 거부될 수 있고, 그래도 타이머는 시작 시각 기준으로 정확하다 */
+    wakeRefused = true; // 저전력 모드 등에서는 거부될 수 있고, 그래도 타이머는 시작 시각 기준으로 정확하다
+  } finally {
+    wakePending = false;
   }
 }
 document.addEventListener('visibilitychange', () => {
-  wakeWaiting = false;
+  wakeRefused = false;
 });
 
 // 새로고침한 뒤에는 화면을 한 번 눌러야 브라우저가 소리와 화면 유지를 허용한다
 document.addEventListener('click', () => {
   if (!ticking()) return;
   unlockAudio();
-  wakeWaiting = false;
+  wakeRefused = false;
   syncWakeLock();
 });
 
@@ -155,11 +174,28 @@ function paint() {
 
 const idle = (patch = {}) => ({ ...t, phase: 'idle', startedAt: 0, banked: 0, finished: false, ...patch });
 
+const restMs = (session) => (PRESETS.find((p) => p.min === session.preset) ?? PRESETS[0]).rest * 60000;
+
+/** 뒤에 숨은 탭이 먼저 끝내면 소리가 나지 않으니, 보고 있는 화면에서 대신 알린다 */
+function announce(before) {
+  if (document.hidden || t.phase !== 'idle') return;
+  if (before.phase === 'running' && t.finished) {
+    chime();
+    if (areaById(before.areaId)) savedToast(`${before.preset}분 집중 완료! 기록해뒀어요.`);
+    else toast('영역이 사라져서 이 세션은 기록하지 못했어요');
+  } else if (before.phase === 'break' && Date.now() - before.startedAt >= restMs(before)) {
+    chime();
+    toast('휴식 끝! 다음 세션을 시작해볼까요?');
+  }
+}
+
 function finishFocus() {
   // 다른 탭이나 앱이 먼저 끝냈거나 멈췄다면 다시 기록하지 않는다
   const stored = storedNow();
   if (stored && (stored.phase !== 'running' || stored.startedAt !== t.startedAt)) {
-    t = stored;
+    const before = t;
+    follow(stored);
+    announce(before);
     refresh({ background: true });
     return;
   }
@@ -203,7 +239,7 @@ export function startTicker() {
 function stopAndLog() {
   const stored = storedNow();
   if (stored?.phase === 'idle') {
-    t = stored;
+    follow(stored);
     refresh();
     return;
   }
@@ -233,20 +269,55 @@ export function resetTimer() {
 // 다른 탭이나 앱에서 멈추거나 끝낸 것을 이쪽에도 반영한다
 addEventListener('storage', (e) => {
   if (e.key !== KEY && e.key !== null) return;
-  t = readStored() ?? fresh();
+  if (onlyHere() && e.newValue !== null) return;
+  const before = t;
+  follow(readStored() ?? fresh());
+  announce(before);
+  // 모두 지우기를 했는데 입력 중이던 칸에 글자가 남으면 다음 입력 때 다시 저장된다
+  if (e.newValue === null) {
+    const input = document.querySelector('[data-timer-title]');
+    if (input) input.value = '';
+  }
   if (location.hash === '#/timer') refresh({ background: true });
   paint();
 });
 
+/** 진행 중인 세션의 영역은 바꾸지 않는다. 숨긴 영역이어도 끝나면 그 영역에 기록된다. */
+function pickArea(state) {
+  const areas = activeAreas(state);
+  if (t.phase === 'idle' && !areas.some((a) => a.id === t.areaId)) t.areaId = areas[0]?.id ?? null;
+}
+
+// 입력 중에는 화면을 나중에 그리므로, 이미 지나간 단계의 버튼이 눌릴 수 있다
+const ALLOWED = {
+  preset: ['idle'],
+  start: ['idle'],
+  break: ['idle'],
+  pause: ['running'],
+  resume: ['paused'],
+  finish: ['running', 'paused'],
+  reset: ['running', 'paused'],
+  'skip-break': ['break'],
+};
+
 function act(action, value) {
+  if (ALLOWED[action] && !ALLOWED[action].includes(t.phase)) {
+    refresh();
+    return;
+  }
   switch (action) {
     case 'preset':
-      if (t.phase === 'idle') t = idle({ preset: Number(value) });
+      t = idle({ preset: Number(value) });
       break;
     case 'timer-area':
-      t.areaId = value;
+      if (activeAreas(getState()).some((a) => a.id === value)) t.areaId = value; // 다른 탭에서 지운 영역의 칩이 남아 있을 수 있다
       break;
     case 'start':
+      pickArea(getState());
+      if (!t.areaId) {
+        refresh();
+        return;
+      }
       unlockAudio();
       t = { ...t, phase: 'running', startedAt: Date.now(), banked: 0, finished: false };
       break;
@@ -293,14 +364,13 @@ function actions(area) {
   if (t.phase === 'running') return button('pause', '일시정지', 'primary') + button('finish', '끝내고 기록') + button('reset', '초기화', 'ghost');
   if (t.phase === 'paused') return button('resume', '계속하기', 'primary') + button('finish', '끝내고 기록') + button('reset', '초기화', 'ghost');
   if (t.phase === 'break') return button('skip-break', '휴식 건너뛰기', 'primary');
-  if (t.finished) return button('break', `${preset().rest}분 휴식`, 'primary') + button('start', '바로 다음 세션');
+  if (t.finished) return button('break', `${preset().rest}분 휴식`, 'primary') + (area ? button('start', '바로 다음 세션') : '');
   return area ? button('start', '시작', 'primary') : '<a class="btn" href="#/settings">영역을 먼저 추가해주세요</a>';
 }
 
 export function render(state) {
   const areas = activeAreas(state);
-  // 진행 중인 세션의 영역은 바꾸지 않는다. 숨긴 영역이어도 끝나면 그 영역에 기록된다.
-  if (t.phase === 'idle' && !areas.some((a) => a.id === t.areaId)) t.areaId = areas[0]?.id ?? null;
+  pickArea(state);
   const area = areaById(t.areaId, state);
   const today = todayKey();
   const sessions = state.entries.filter((e) => e.date === today && e.source === 'timer').sort((a, b) => b.createdAt - a.createdAt);

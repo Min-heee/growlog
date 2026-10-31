@@ -109,13 +109,28 @@ export function normalize(data) {
 export const isBackup = (data) => isMap(data) && Array.isArray(data.areas) && Array.isArray(data.entries) && (cleanAreas(data.areas).length > 0 || data.areas.length === 0);
 
 // ---- 읽기·쓰기 ----
+/** 저장소를 읽지 못하면 undefined, 기록이 없거나 깨졌으면 null. 둘을 구분해야 일시적인 오류로 기록을 덮어쓰지 않는다. */
 function read() {
+  let raw;
   try {
-    const raw = localStorage.getItem(KEY);
-    return raw ? normalize(JSON.parse(raw)) : null;
+    raw = localStorage.getItem(KEY);
   } catch {
-    return null; // 저장소를 못 쓰거나 내용이 깨진 경우
+    return undefined;
   }
+  try {
+    const data = raw ? normalize(JSON.parse(raw)) : null;
+    if (data) lastGood = raw;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+/** 지우기처럼 되돌릴 수 없는 일은 진짜 기록을 읽을 수 있을 때만 한다. 못 읽을 때 보이는 화면은 기본값이다. */
+export function canRead() {
+  if (read() === undefined) return false;
+  retrySave(); // 방금 읽을 수 있게 됐다면 기본값이 아니라 진짜 기록을 보고 판단하게 한다
+  return true;
 }
 
 function storageWorks() {
@@ -128,9 +143,11 @@ function storageWorks() {
   }
 }
 
-let state = read() ?? createDefaultState();
-let saveFailed = !storageWorks();
-let unsaved = false; // 저장하지 못한 변경이 메모리에 남아 있다
+let lastGood = null; // 마지막으로 읽거나 쓴 기록. 알림 없이 기록이 사라져도 메모리의 기록을 버리지 않게 한다.
+const stored = read();
+let state = stored ?? createDefaultState();
+let saveFailed = stored === undefined || !storageWorks();
+let pending = []; // 저장하지 못한 변경. 전체를 덮어쓰지 않고, 저장소가 돌아오면 그때의 최신 값 위에 다시 적용한다.
 const listeners = new Set();
 
 export const getState = () => state;
@@ -141,22 +158,36 @@ export function subscribe(fn) {
 }
 const notify = (quiet, background) => listeners.forEach((fn) => fn(state, { quiet, background }));
 
-function persist() {
+/** 다른 탭이나 설치한 앱이 먼저 저장했을 수 있으니, 저장된 최신 값 위에 밀린 변경을 얹어 저장한다. 저장소를 읽지 못하면 false */
+function sync() {
+  const disk = read();
+  if (disk === undefined) {
+    saveFailed = true;
+    return false;
+  }
+  const base = disk ?? (lastGood ? normalize(JSON.parse(lastGood)) : createDefaultState());
+  state = pending.reduce((s, mutate) => mutate(s) ?? s, base);
+  if (!pending.length) {
+    if (saveFailed) saveFailed = !storageWorks();
+    return true;
+  }
   try {
-    localStorage.setItem(KEY, JSON.stringify(state));
+    const json = JSON.stringify(state);
+    localStorage.setItem(KEY, json);
+    lastGood = json;
+    pending = [];
     saveFailed = false;
-    unsaved = false;
   } catch {
     saveFailed = true;
-    unsaved = true;
   }
+  return true;
 }
 
-/** 저장 공간이 다시 생겼을 수 있으니, 앱으로 돌아올 때 못 한 저장을 다시 해본다 */
+/** 저장소가 돌아왔을 수 있으니, 앱으로 돌아올 때 못 한 저장을 다시 해본다 */
 export function retrySave() {
-  if (!unsaved) return;
-  persist();
-  if (!saveFailed) notify(true, false);
+  if (!saveFailed) return;
+  sync();
+  if (!saveFailed) notify(false, true);
 }
 
 /**
@@ -164,20 +195,15 @@ export function retrySave() {
  * background: 타이머처럼 사용자가 누르지 않았는데 일어난 변경. 입력 중이면 화면을 나중에 그린다.
  */
 function commit(mutate, { quiet = false, background = false } = {}) {
-  // 다른 탭이나 설치한 앱이 먼저 저장했을 수 있으니, 저장된 최신 값 위에 변경을 적용한다.
-  // 저장이 실패하는 동안에는 메모리에만 있는 변경을 지키기 위해 다시 읽지 않는다.
-  if (!saveFailed) state = read() ?? state;
-  const next = mutate(state);
-  if (next) state = next;
-  persist();
+  pending.push(mutate);
+  if (!sync()) state = mutate(state) ?? state; // 읽지도 못하는 동안에는 화면에만 반영한다
   notify(quiet, background);
 }
 
 globalThis.addEventListener?.('storage', (e) => {
   if (e.key !== KEY && e.key !== null) return; // null이면 저장소 전체가 지워진 것
-  if (unsaved) return; // 저장하지 못한 변경이 메모리에만 있으니 디스크 값으로 덮지 않는다
-  state = read() ?? createDefaultState();
-  notify(false, true);
+  if (e.newValue === null) lastGood = null;
+  if (sync()) notify(false, true);
 });
 
 // ---- 조회 ----
@@ -186,11 +212,14 @@ export const areaById = (id, s = state) => s.areas.find((a) => a.id === id);
 
 // ---- 활동 기록 ----
 export function addEntry({ date, areaId, minutes, title = '', source = 'manual', createdAt = Date.now() }, opts) {
-  commit((s) => {
-    s.entries.push({ id: uid(), date, areaId, minutes: Math.round(minutes), title: title.trim(), source, createdAt });
-  }, opts);
+  // 저장에 실패하면 다시 적용될 수 있으니 id는 변경 밖에서 정한다
+  const entry = { id: uid(), date, areaId, minutes: Math.round(minutes), title: title.trim(), source, createdAt };
+  commit((s) => void s.entries.push(entry), opts);
 }
-export const restoreEntry = (entry) => commit((s) => void s.entries.push(entry));
+export const restoreEntry = (entry) =>
+  commit((s) => {
+    if (!s.entries.some((e) => e.id === entry.id)) s.entries.push(entry);
+  });
 export const deleteEntry = (id) =>
   commit((s) => {
     s.entries = s.entries.filter((e) => e.id !== id);
@@ -210,10 +239,13 @@ export const setSleep = (date, patch, opts) =>
 export const canAddArea = (s = state) => s.areas.length < MAX_AREAS;
 
 export function addArea({ label, emoji, goal, kind }) {
-  const used = new Set(state.areas.map((a) => a.color));
-  const color = [1, 2, 3, 4, 5, 6].find((c) => !used.has(c));
-  if (!color) return false;
-  commit((s) => void s.areas.push({ id: uid(), label, emoji, goal, kind, color, archived: false }));
+  const free = (s) => [1, 2, 3, 4, 5, 6].find((c) => !s.areas.some((a) => a.color === c));
+  if (!free(state)) return false;
+  const id = uid();
+  commit((s) => {
+    const color = free(s);
+    if (color) s.areas.push({ id, label, emoji, goal, kind, color, archived: false });
+  });
   return true;
 }
 export const updateArea = (id, patch, opts) =>
@@ -236,5 +268,8 @@ export const setTheme = (theme) =>
   commit((s) => {
     s.theme = theme;
   });
-export const replaceState = (data) => commit(() => normalize(data));
+export function replaceState(data) {
+  const next = normalize(data);
+  commit(() => structuredClone(next));
+}
 export const resetState = () => commit(() => createDefaultState());

@@ -206,7 +206,7 @@ h1 { margin: 2px 0 0; font-size: 26px; line-height: 1.25; letter-spacing: -0.03e
 .divider { height: 1px; margin: 18px 0; background: var(--grid); }
 .row { display: flex; gap: 10px; }
 .grow { flex: 1; min-width: 0; }
-.stack { display: grid; gap: 14px; }
+.stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; }
 .mini-title { margin: 20px 0 4px !important; color: var(--ink-2); font-size: 13px !important; }
 
@@ -305,7 +305,7 @@ h1 { margin: 2px 0 0; font-size: 26px; line-height: 1.25; letter-spacing: -0.03e
 .scale-hint { color: var(--muted); font-size: 12px; }
 
 /* 입력 */
-.field { display: flex; flex-direction: column; gap: 6px; color: var(--ink-2); font-size: 13px; font-weight: 700; }
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; color: var(--ink-2); font-size: 13px; font-weight: 700; }
 input, select {
   width: 100%;
   min-width: 0;
@@ -387,9 +387,13 @@ select {
 .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
 @media (min-width: 600px) { .tiles { grid-template-columns: repeat(4, 1fr); } }
 .card .tiles { margin: 0; }
-.tile { padding: 12px 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.tile { min-width: 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
 .tile-label { color: var(--ink-2); font-size: 12px; font-weight: 700; }
 .tile-value { margin-top: 2px; font-size: 21px; font-weight: 800; letter-spacing: -0.02em; white-space: nowrap; }
+@media (max-width: 340px) {
+  .row { flex-direction: column; }
+  .tile-value { font-size: 17px; }
+}
 .tile-value small { margin-left: 2px; color: var(--ink-2); font-size: 13px; font-weight: 600; }
 
 .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 8px; padding: 0; color: var(--ink-2); font-size: 13px; list-style: none; }
@@ -579,6 +583,7 @@ th { color: var(--ink-2); font-weight: 700; }
   transform: translate(-50%, 16px);
   transition: opacity 0.2s, transform 0.2s;
 }
-.toast.show { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.show button { pointer-events: auto; }
 .toast button { padding: 0; border: 0; background: none; color: inherit; font-weight: 800; text-decoration: underline; cursor: pointer; white-space: nowrap; }
 @media (min-width: 800px) { .toast { bottom: 32px; } }

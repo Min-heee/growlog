@@ -6,7 +6,7 @@ const COMPLETE = './__complete__'; // 한 벌을 끝까지 저장했다는 표�
 const REFRESH_DELAY = 3000; // 앱이 저장된 파일을 다 읽은 뒤에 확인을 시작한다
 const DOWNLOAD_TIMEOUT = 20000;
 const MATCH = { ignoreSearch: true, ignoreVary: true };
-const TYPES = { '.js': 'javascript', '.css': 'css', '.html': 'html', '/': 'html' };
+const TYPES = { '.js': 'javascript', '.css': 'css', '.html': 'html', '/': 'html', '.png': 'image/png', '.webmanifest': 'manifest' };
 const FILES = [
   './',
   './index.html',
@@ -59,6 +59,7 @@ async function download() {
         // 프록시가 200으로 준 다른 내용이 앱을 대신하지 않게 한다
         const wanted = Object.entries(TYPES).find(([ext]) => url.endsWith(ext))?.[1];
         if (!body.byteLength || (wanted && !type?.includes(wanted))) throw new Error(`${url}: ${type}`);
+        if (wanted === 'html' && !new TextDecoder().decode(body).includes('src="js/app.js"')) throw new Error(`${url}: 앱이 아닌 페이지`);
         return { url, type, body };
       }),
     );
@@ -100,7 +101,10 @@ async function update() {
   if (current && !(await isDifferent(files, current.cache))) return false;
   // 받는 도중에 새 배포가 올라오면 두 빌드가 섞인다. 한 번 더 받아 같을 때만 저장하고, 아니면 다음 실행에서 다시 받는다.
   const again = await download();
-  if (files.some(({ body }, i) => !sameBytes(body, again[i].body))) return false;
+  if (files.some(({ body }, i) => !sameBytes(body, again[i].body))) {
+    if (!current) throw new Error('배포 중'); // 저장해둔 새 버전이 없으니 설치를 멈춰 옛 버전을 지킨다
+    return false;
+  }
   await save(files, (current?.version ?? 0) + 1);
   return true;
 }

@@ -42,7 +42,10 @@ export const entryList = (entries, state) =>
 let toastTimer = 0;
 export function toast(message, action) {
   const el = document.getElementById('toast');
-  const hide = () => el.classList.remove('show');
+  const hide = () => {
+    el.classList.remove('show');
+    el.querySelector('button')?.remove(); // 보이지 않는 되돌리기가 눌리거나 키보드로 잡히지 않게 한다
+  };
   const text = document.createElement('span');
   text.textContent = message;
   el.replaceChildren(text);
@@ -53,6 +56,11 @@ export function toast(message, action) {
     button.addEventListener('click', () => {
       action.onClick();
       hide();
+    });
+    // 되돌리려고 누르는 사이에 사라지지 않게 한다
+    button.addEventListener('pointerdown', () => clearTimeout(toastTimer));
+    button.addEventListener('pointercancel', () => {
+      toastTimer = setTimeout(hide, 1500);
     });
     el.append(button);
   }

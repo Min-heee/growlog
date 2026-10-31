@@ -17,6 +17,7 @@ const PLACEHOLDER = { exercise: '예: 러닝 5km', study: '예: 영어 단어 50
 
 // 입력 중인 내용은 화면을 다시 그려도 남아 있어야 한다
 let draft = { areaId: null, minutes: '', title: '', date: '' };
+let savedAt = 0; // 저장 직후 한 번 더 눌려도 오류 안내로 덮지 않는다
 // 자정을 넘겨 화면을 켜둔 채 입력해도 화면에 보이는 날짜로 저장되도록 그릴 때의 날짜를 쓴다
 let shownDay = todayKey();
 const OLDEST_DAYS = 29; // 통계에서 볼 수 있는 가장 오래된 날
@@ -146,7 +147,8 @@ export function render(state) {
   shownDay = todayKey();
   const today = shownDay;
   const areas = activeAreas(state);
-  if (!areas.some((a) => a.id === draft.areaId)) draft.areaId = areas[0]?.id ?? null;
+  // 입력 중이면 고른 영역을 몰래 바꾸지 않는다. 지워졌다면 기록할 때 알려준다.
+  if (!document.activeElement?.closest?.('[data-form="entry"]') && !areas.some((a) => a.id === draft.areaId)) draft.areaId = areas[0]?.id ?? null;
   const banner = state.sample
     ? '<div class="banner"><span>샘플 데이터로 둘러보는 중이에요.</span><button type="button" class="btn small" data-action="clear-sample">지우고 시작하기</button></div>'
     : '';
@@ -210,16 +212,21 @@ export const on = {
       document.activeElement?.blur(); // 키보드를 내려 안내가 가려지지 않게 한다
       toast(message);
     };
+    if (!draft.minutes && Date.now() - savedAt < 500) return;
     const minutes = Math.round(Number(draft.minutes));
     const today = todayKey();
-    const date = draft.date || today;
-    if (!draft.areaId) return complain('영역을 먼저 골라주세요');
+    const date = draft.date || shownDay;
+    if (!areaById(draft.areaId)) {
+      refresh(); // 다른 탭에서 지운 영역이 입력 중인 화면에 남아 있을 수 있다
+      return complain('영역을 먼저 골라주세요');
+    }
     if (!(minutes >= 1 && minutes <= 1440)) return complain('시간을 1~1440분 사이로 입력해주세요');
     if (date > today || date < addDays(today, -OLDEST_DAYS)) return complain('날짜는 오늘부터 최근 30일 안에서 골라주세요');
     const entry = { date, areaId: draft.areaId, minutes, title: draft.title };
     // addEntry가 곧바로 화면을 다시 그리므로 입력값을 먼저 비운다
-    draft = { ...draft, minutes: '', title: '', date: '' };
+    draft = { ...draft, minutes: '', title: '', date: '', areaId: activeAreas(getState()).some((a) => a.id === entry.areaId) ? entry.areaId : null };
     addEntry(entry);
+    savedAt = Date.now();
     savedToast(`${areaById(entry.areaId).label} ${fmtHM(minutes)} 기록했어요`);
   },
 };

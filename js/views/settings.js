@@ -1,11 +1,11 @@
 // 설정 화면: 활동 영역·주간 목표, 수면 목표, 테마, 백업
-import { addArea, areaById, canAddArea, createDefaultState, getState, isBackup, MAX_AREAS, normalize, removeArea, replaceState, resetState, setSleepGoal, setTheme, updateArea } from '../store.js';
+import { addArea, areaById, canAddArea, canRead, createDefaultState, getState, isBackup, MAX_AREAS, normalize, removeArea, replaceState, resetState, setSleepGoal, setTheme, updateArea } from '../store.js';
 import { exportData } from '../backup.js';
 import { buildSample } from '../sample.js';
 import { installState, promptInstall } from '../pwa.js';
 import { resetTimer } from './timer.js';
 import { clamp, esc } from '../util.js';
-import { areaColor, ask, savedToast, toast } from '../ui.js';
+import { areaColor, ask, refresh, savedToast, toast } from '../ui.js';
 
 const THEMES = [
   ['system', '시스템'],
@@ -37,11 +37,15 @@ function hiddenRow(a, state) {
   </div>`;
 }
 
+// 입력 중인 내용은 화면을 다시 그려도 남아 있어야 한다
+const EMPTY_DRAFT = { emoji: '', label: '', goal: '120', kind: 'recovery' };
+let draft = { ...EMPTY_DRAFT };
+
 const addForm = () => `<form class="area-row add" data-form="add-area">
-  <input class="emoji-in" name="emoji" maxlength="8" placeholder="📖" aria-label="새 영역 아이콘">
-  <div class="name-in"><input name="label" maxlength="12" placeholder="새 영역 (예: 독서)" aria-label="새 영역 이름"></div>
-  <label class="suffix-in"><input type="number" name="goal" min="0" max="10080" step="10" value="120" aria-label="새 영역 주간 목표"><span>분/주</span></label>
-  <select name="kind" aria-label="새 영역 계산 방식">${kindOptions('recovery')}</select>
+  <input class="emoji-in" name="emoji" maxlength="8" value="${esc(draft.emoji)}" placeholder="📖" aria-label="새 영역 아이콘">
+  <div class="name-in"><input name="label" maxlength="12" value="${esc(draft.label)}" placeholder="새 영역 (예: 독서)" aria-label="새 영역 이름"></div>
+  <label class="suffix-in"><input type="number" name="goal" min="0" max="10080" step="10" value="${esc(draft.goal)}" aria-label="새 영역 주간 목표"><span>분/주</span></label>
+  <select name="kind" aria-label="새 영역 계산 방식">${kindOptions(draft.kind)}</select>
   <button type="submit" class="btn small primary">추가</button>
 </form>`;
 
@@ -103,17 +107,26 @@ export function render(state) {
       <p class="sub">모든 기록은 이 브라우저에만 저장돼요. 브라우저 데이터를 지우거나 기기를 바꾸기 전에 내보내기로 백업해두세요.</p>
       <div class="btn-row">
         <button type="button" class="btn" data-action="export">내보내기</button>
-        <label class="btn">가져오기<input type="file" accept="application/json,.json" data-import hidden></label>
+        <label class="btn" for="import-file">가져오기</label>
         <button type="button" class="btn" data-action="sample">샘플 데이터 넣기</button>
         <button type="button" class="btn danger" data-action="reset">모두 지우기</button>
       </div>
     </section>`;
 }
 
-async function importData(input) {
-  const file = input.files?.[0];
+// 파일을 고르는 사이에 화면을 다시 그려도 사라지지 않도록 화면 바깥에 둔다
+const picker = Object.assign(document.createElement('input'), { id: 'import-file', type: 'file', accept: 'application/json,.json', hidden: true });
+picker.dataset.import = '';
+picker.addEventListener('change', importData);
+document.body.append(picker);
+
+const UNREADABLE = '저장된 기록을 읽지 못하고 있어요. 앱을 다시 연 뒤에 해주세요.';
+
+async function importData() {
+  const file = picker.files?.[0];
   if (!file) return;
-  input.value = '';
+  picker.value = '';
+  if (!canRead()) return toast(UNREADABLE);
   let data;
   try {
     data = JSON.parse(await file.text());
@@ -157,12 +170,14 @@ export const on = {
     const button = e.target.closest('[data-action]');
     if (!button) return;
     const { action, id, value } = button.dataset;
+    if (['remove-area', 'sample', 'reset'].includes(action) && !canRead()) return toast(UNREADABLE);
     if (action === 'hide-area') {
       updateArea(id, { archived: true });
       savedToast('영역을 숨겼어요. 기록은 그대로 남아요.');
     } else if (action === 'restore-area') updateArea(id, { archived: false });
     else if (action === 'remove-area') {
       const area = areaById(id);
+      if (!area) return refresh(); // 진짜 기록을 다시 불러오니 없는 영역이었다
       const count = getState().entries.filter((x) => x.areaId === id).length;
       if (await ask(`'${area.label}' 영역과 기록 ${count}개를 삭제할까요? 되돌릴 수 없어요.`, '삭제')) {
         removeArea(id);
@@ -183,7 +198,8 @@ export const on = {
   input(e) {
     const el = e.target;
     const field = el.dataset.areaField;
-    if (field && field !== 'kind' && areaFieldValue(el, field) !== null) updateArea(el.dataset.id, { [field]: areaFieldValue(el, field) }, { quiet: true });
+    if (el.form?.dataset.form === 'add-area') draft[el.name] = el.value;
+    else if (field && field !== 'kind' && areaFieldValue(el, field) !== null) updateArea(el.dataset.id, { [field]: areaFieldValue(el, field) }, { quiet: true });
   },
   change(e) {
     const el = e.target;
@@ -207,7 +223,7 @@ export const on = {
       setSleepGoal(hours, { quiet: true });
       el.value = hours;
       savedToast('저장했어요');
-    } else if ('import' in el.dataset) importData(el);
+    }
   },
   submit(e) {
     e.preventDefault();
@@ -217,7 +233,12 @@ export const on = {
       document.activeElement?.blur(); // 키보드에 가려지지 않도록
       return toast('영역 이름을 입력해주세요');
     }
-    addArea({ label: name, emoji: emoji.value.trim() || '✨', goal: clamp(Math.round(Number(goal.value) || 0), 0, 10080), kind: kind.value });
-    savedToast(`'${name}' 영역을 추가했어요`);
+    const area = { label: name, emoji: emoji.value.trim() || '✨', goal: clamp(Math.round(Number(goal.value) || 0), 0, 10080), kind: kind.value };
+    draft = { ...EMPTY_DRAFT };
+    if (addArea(area)) savedToast(`'${name}' 영역을 추가했어요`);
+    else {
+      refresh();
+      toast(`영역은 최대 ${MAX_AREAS}개까지 만들 수 있어요`);
+    }
   },
 };
