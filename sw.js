@@ -1,13 +1,19 @@
-// 서비스 워커: 인터넷이 되면 항상 최신 파일을 받고, 안 되면 저장해둔 파일로 앱을 연다.
-// 파일을 추가했다면 아래 목록에도 넣어주세요. 빠뜨려도 한 번 열 때 저장되지만, 첫 오프라인 실행에는 없을 수 있어요.
-const CACHE = 'growlog-v1';
-const NETWORK_TIMEOUT = 3000; // 신호가 약할 때 오래 기다리지 않고 저장된 파일을 보여준다
+// 서비스 워커: 앱 파일을 한 벌로 묶어 저장해두고, 인터넷 상태와 상관없이 바로 연다.
+// 새 버전은 뒤에서 전부 받은 다음에만 통째로 바꾼다. 받다가 끊겨도 옛 버전이 그대로 남아 파일 버전이 섞이지 않는다.
+// 파일을 추가했다면 아래 목록에도 넣어주세요. 빠뜨린 파일은 오프라인에서 열리지 않아요.
+const PREFIX = 'growlog-app-';
+const COMPLETE = './__complete__'; // 한 벌을 끝까지 저장했다는 표시. 이게 없는 캐시는 쓰지 않는다.
+const REFRESH_DELAY = 3000; // 앱이 저장된 파일을 다 읽은 뒤에 확인을 시작한다
+const DOWNLOAD_TIMEOUT = 20000;
+const MATCH = { ignoreSearch: true, ignoreVary: true };
+const TYPES = { '.js': 'javascript', '.css': 'css', '.html': 'html', '/': 'html' };
 const FILES = [
   './',
   './index.html',
   './manifest.webmanifest',
   './css/styles.css',
   './js/app.js',
+  './js/backup.js',
   './js/burnout.js',
   './js/charts.js',
   './js/dates.js',
@@ -28,49 +34,126 @@ const FILES = [
   './icons/icon-maskable-512.png',
 ];
 
+/** 끝까지 저장된 캐시 중 가장 새 것 */
+async function currentCache() {
+  const versionOf = (name) => Number(name.slice(PREFIX.length));
+  const names = (await caches.keys()).filter((name) => name.startsWith(PREFIX)).sort((a, b) => versionOf(b) - versionOf(a));
+  for (const name of names) {
+    const cache = await caches.open(name);
+    if (await cache.match(COMPLETE)) return { name, cache, version: versionOf(name) };
+  }
+  return null;
+}
+
+/** 파일을 모두 받는다. 하나라도 실패하면 전체를 실패로 본다. */
+async function download() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT);
+  try {
+    return await Promise.all(
+      FILES.map(async (url) => {
+        const response = await fetch(url, { cache: 'no-cache', signal: controller.signal });
+        if (!response.ok) throw new Error(`${url}: ${response.status}`);
+        const type = response.headers.get('content-type');
+        const body = await response.arrayBuffer();
+        // 프록시가 200으로 준 다른 내용이 앱을 대신하지 않게 한다
+        const wanted = Object.entries(TYPES).find(([ext]) => url.endsWith(ext))?.[1];
+        if (!body.byteLength || (wanted && !type?.includes(wanted))) throw new Error(`${url}: ${type}`);
+        return { url, type, body };
+      }),
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function sameBytes(a, b) {
+  const before = new Uint8Array(a);
+  const after = new Uint8Array(b);
+  return before.length === after.length && before.every((byte, i) => byte === after[i]);
+}
+
+async function isDifferent(files, cache) {
+  for (const { url, body } of files) {
+    const saved = await cache.match(url, MATCH);
+    if (!saved || !sameBytes(await saved.arrayBuffer(), body)) return true;
+  }
+  return false;
+}
+
+async function save(files, version) {
+  const cache = await caches.open(PREFIX + version);
+  await Promise.all(files.map(({ url, type, body }) => cache.put(url, new Response(body, { headers: { 'content-type': type } }))));
+  await cache.put(COMPLETE, new Response('ok'));
+}
+
+async function removeOldCaches() {
+  const current = await currentCache();
+  const names = (await caches.keys()).filter((name) => name.startsWith('growlog-') && name !== current?.name);
+  await Promise.all(names.map((name) => caches.delete(name)));
+}
+
+/** 새 파일을 받아 달라졌으면 저장한다. 바뀌었으면 true */
+async function update() {
+  const files = await download();
+  const current = await currentCache();
+  if (current && !(await isDifferent(files, current.cache))) return false;
+  // 받는 도중에 새 배포가 올라오면 두 빌드가 섞인다. 한 번 더 받아 같을 때만 저장하고, 아니면 다음 실행에서 다시 받는다.
+  const again = await download();
+  if (files.some(({ body }, i) => !sameBytes(body, again[i].body))) return false;
+  await save(files, (current?.version ?? 0) + 1);
+  return true;
+}
+
+async function tellPages() {
+  const pages = await self.clients.matchAll({ type: 'window' });
+  pages.forEach((page) => page.postMessage({ type: 'updated' }));
+}
+
+let refreshing = null;
+
+function refresh() {
+  refreshing ??= new Promise((resolve) => setTimeout(resolve, REFRESH_DELAY))
+    .then(update)
+    .then(async (updated) => {
+      if (!updated) return;
+      await removeOldCaches();
+      await tellPages();
+    })
+    .catch(() => {}) // 인터넷이 없거나 서버 오류면 지금 버전을 그대로 쓴다
+    .finally(() => {
+      refreshing = null;
+    });
+  return refreshing;
+}
+
+async function respond(request) {
+  const current = await currentCache();
+  return (await current?.cache.match(request, MATCH)) ?? fetch(request);
+}
+
+let replaced = false; // sw.js가 바뀐 배포면 설치 단계에서 새 버전을 받으므로, 활성화한 뒤에 알린다
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches
-      .open(CACHE)
-      .then((cache) => cache.addAll(FILES))
-      .then(() => self.skipWaiting()),
+    update().then((changed) => {
+      replaced = changed && !!self.registration.active;
+      return self.skipWaiting();
+    }),
   );
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim()),
+    removeOldCaches()
+      .then(() => self.clients.claim())
+      .then(() => (replaced ? tellPages() : undefined)),
   );
 });
-
-async function respond(event) {
-  const { request } = event;
-  const cache = await caches.open(CACHE);
-  // no-cache: 브라우저 캐시에 남은 옛 파일 대신 서버에 새 버전이 있는지 확인한다
-  const network = fetch(request, { cache: 'no-cache' }).then((response) => {
-    if (response.ok) return cache.put(request, response.clone()).then(() => response);
-    return response;
-  });
-  event.waitUntil(network.catch(() => {})); // 저장된 파일을 먼저 보여줘도 새 파일 저장은 끝까지 한다
-
-  const timeout = new Promise((resolve) => setTimeout(resolve, NETWORK_TIMEOUT));
-  const fresh = await Promise.race([network.catch(() => null), timeout]);
-  if (fresh) return fresh;
-
-  const cached = await cache.match(request, { ignoreSearch: true });
-  if (cached) return cached;
-  if (request.mode === 'navigate') {
-    const page = await cache.match('./index.html');
-    if (page) return page;
-  }
-  return network;
-}
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
-  event.respondWith(respond(event));
+  if (request.mode === 'navigate') event.waitUntil(refresh());
+  event.respondWith(respond(request));
 });

@@ -1,9 +1,10 @@
 // 오늘 화면: 컨디션·수면 체크인, 활동 기록, 이번 주 목표
 import { activeAreas, addEntry, areaById, getState, resetState, setCheckin, setSleep } from '../store.js';
-import { fmtLong, rangeKeys, sleepHours, todayKey, weekStartKey } from '../dates.js';
+import { addDays, fmtLong, rangeKeys, sleepHours, todayKey, weekStartKey } from '../dates.js';
 import { computeBurnout, MIN_DAYS } from '../burnout.js';
+import { isIOS, isStandalone } from '../pwa.js';
 import { avg, esc, fmtHM, fmtHours, sum } from '../util.js';
-import { areaColor, ask, entryList, refresh, statusBadge, toast } from '../ui.js';
+import { areaColor, ask, entryList, refresh, savedToast, statusBadge, toast } from '../ui.js';
 
 const SCALES = [
   { field: 'energy', label: '에너지', low: '바닥', high: '넘침' },
@@ -16,6 +17,9 @@ const PLACEHOLDER = { exercise: '예: 러닝 5km', study: '예: 영어 단어 50
 
 // 입력 중인 내용은 화면을 다시 그려도 남아 있어야 한다
 let draft = { areaId: null, minutes: '', title: '', date: '' };
+// 자정을 넘겨 화면을 켜둔 채 입력해도 화면에 보이는 날짜로 저장되도록 그릴 때의 날짜를 쓴다
+let shownDay = todayKey();
+const OLDEST_DAYS = 29; // 통계에서 볼 수 있는 가장 오래된 날
 
 function scale({ field, label, low, high }, value, action) {
   const buttons = [1, 2, 3, 4, 5]
@@ -78,10 +82,10 @@ function entryCard(areas, today) {
     <p class="sub">무엇을 얼마나 했는지 남겨요. 타이머를 쓰면 자동으로 기록돼요.</p>
     <form class="stack" data-form="entry" novalidate>
       <div class="chips" role="group" aria-label="영역">${chips}</div>
-      <label class="field"><span>한 일</span><input name="title" data-draft="title" maxlength="60" value="${esc(draft.title)}" placeholder="${esc(PLACEHOLDER[draft.areaId] || '예: 무엇을 했는지 짧게')}"></label>
+      <label class="field"><span>한 일</span><input name="title" data-draft="title" maxlength="60" value="${esc(draft.title)}" placeholder="${esc((Object.hasOwn(PLACEHOLDER, draft.areaId ?? '') && PLACEHOLDER[draft.areaId]) || '예: 무엇을 했는지 짧게')}"></label>
       <div class="row">
         <label class="field grow"><span>시간(분)</span><input name="minutes" data-draft="minutes" type="number" inputmode="numeric" min="1" max="1440" value="${esc(draft.minutes)}" placeholder="30"></label>
-        <label class="field grow"><span>날짜</span><input name="date" data-draft="date" type="date" max="${today}" value="${esc(draft.date || today)}"></label>
+        <label class="field grow"><span>날짜</span><input name="date" data-draft="date" type="date" min="${addDays(today, -OLDEST_DAYS)}" max="${today}" value="${esc(draft.date || today)}"></label>
       </div>
       <div class="chips">${quick}</div>
       <button class="btn primary block" type="submit">기록하기</button>
@@ -139,13 +143,18 @@ function todayCard(state, today) {
 }
 
 export function render(state) {
-  const today = todayKey();
+  shownDay = todayKey();
+  const today = shownDay;
   const areas = activeAreas(state);
   if (!areas.some((a) => a.id === draft.areaId)) draft.areaId = areas[0]?.id ?? null;
   const banner = state.sample
     ? '<div class="banner"><span>샘플 데이터로 둘러보는 중이에요.</span><button type="button" class="btn small" data-action="clear-sample">지우고 시작하기</button></div>'
     : '';
-  return `${banner}
+  const safariTip =
+    isIOS() && !isStandalone()
+      ? '<div class="banner"><span>Safari에만 둔 기록은 일주일쯤 열지 않으면 지워질 수 있어요.</span><a class="btn small" href="#/settings">홈 화면에 추가</a></div>'
+      : '';
+  return `${banner}${safariTip}
     <header class="page-head">
       <p class="eyebrow">오늘</p>
       <h1>${fmtLong(today)}</h1>
@@ -153,7 +162,7 @@ export function render(state) {
     <div data-slot="burnout">${burnoutCard(state, today)}</div>
     ${conditionCard(state, today)}
     ${entryCard(areas, today)}
-    ${weekCard(state, areas, today)}
+    <div data-slot="week">${weekCard(state, areas, today)}</div>
     ${todayCard(state, today)}`;
 }
 
@@ -162,9 +171,8 @@ export const on = {
     const button = e.target.closest('[data-action]');
     if (!button) return;
     const { action, field, value, id } = button.dataset;
-    const today = todayKey();
-    if (action === 'checkin') setCheckin(today, { [field]: Number(value) });
-    else if (action === 'sleep') setSleep(today, { [field]: Number(value) });
+    if (action === 'checkin') setCheckin(shownDay, { [field]: Number(value) });
+    else if (action === 'sleep') setSleep(shownDay, { [field]: Number(value) });
     else if (action === 'pick-area') {
       draft.areaId = id;
       refresh();
@@ -172,40 +180,46 @@ export const on = {
       const input = button.form.elements.minutes;
       draft.minutes = String((Number(input.value) || 0) + Number(value));
       input.value = draft.minutes;
-    } else if (action === 'clear-sample' && (await ask('샘플 데이터를 모두 지울까요?', '지우기'))) {
+    } else if (action === 'clear-sample' && (await ask('샘플 데이터와 그동안 직접 남긴 기록까지 모두 지워져요. 지우고 새로 시작할까요?', '모두 지우기'))) {
       resetState();
-      toast('깨끗하게 비웠어요. 오늘부터 시작해봐요!');
+      savedToast('깨끗하게 비웠어요. 오늘부터 시작해봐요!');
     }
   },
   input(e) {
     const key = e.target.dataset.draft;
     if (key) draft[key] = e.target.value;
+    // 메모는 글자마다 저장해, 입력 중에 앱을 벗어나거나 화면을 다시 그려도 남게 한다
+    else if ('note' in e.target.dataset) setCheckin(shownDay, { note: e.target.value.trim() }, { quiet: true });
   },
   change(e) {
     const el = e.target;
-    const today = todayKey();
     if (el.dataset.sleep) {
       // 시간 입력칸은 값을 고치는 도중에도 change가 불려서, 전체를 다시 그리지 않고 필요한 곳만 고친다
-      setSleep(today, { [el.dataset.sleep]: el.value }, { quiet: true });
+      setSleep(shownDay, { [el.dataset.sleep]: el.value }, { quiet: true });
       const state = getState();
-      const night = state.sleep[today];
+      const night = state.sleep[shownDay];
       const hours = sleepHours(night.bed, night.wake);
       document.querySelector('[data-sleep-total]').textContent = hours != null ? fmtHours(hours) : '–';
-      document.querySelector('[data-slot="burnout"]').innerHTML = burnoutCard(state, today);
-    } else if ('note' in el.dataset) {
-      setCheckin(today, { note: el.value.trim() }, { quiet: true });
-      toast('메모를 저장했어요');
-    }
+      document.querySelector('[data-slot="burnout"]').innerHTML = burnoutCard(state, shownDay);
+      document.querySelector('[data-slot="week"]').innerHTML = weekCard(state, activeAreas(state), shownDay);
+    } else if ('note' in el.dataset) savedToast('메모를 저장했어요');
   },
   submit(e) {
     e.preventDefault();
+    const complain = (message) => {
+      document.activeElement?.blur(); // 키보드를 내려 안내가 가려지지 않게 한다
+      toast(message);
+    };
     const minutes = Math.round(Number(draft.minutes));
-    if (!draft.areaId) return toast('영역을 먼저 골라주세요');
-    if (!(minutes >= 1 && minutes <= 1440)) return toast('시간을 1~1440분 사이로 입력해주세요');
-    const entry = { date: draft.date || todayKey(), areaId: draft.areaId, minutes, title: draft.title };
+    const today = todayKey();
+    const date = draft.date || today;
+    if (!draft.areaId) return complain('영역을 먼저 골라주세요');
+    if (!(minutes >= 1 && minutes <= 1440)) return complain('시간을 1~1440분 사이로 입력해주세요');
+    if (date > today || date < addDays(today, -OLDEST_DAYS)) return complain('날짜는 오늘부터 최근 30일 안에서 골라주세요');
+    const entry = { date, areaId: draft.areaId, minutes, title: draft.title };
     // addEntry가 곧바로 화면을 다시 그리므로 입력값을 먼저 비운다
     draft = { ...draft, minutes: '', title: '', date: '' };
     addEntry(entry);
-    toast(`${areaById(entry.areaId).label} ${fmtHM(minutes)} 기록했어요`);
+    savedToast(`${areaById(entry.areaId).label} ${fmtHM(minutes)} 기록했어요`);
   },
 };

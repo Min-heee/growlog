@@ -128,7 +128,8 @@ export function computeBurnout(state, endKey, first = earliestKey(state)) {
     return (c && (c.stress || c.energy || c.mood)) || (n && (n.quality || sleepHours(n.bed, n.wake) != null));
   };
   const dataDays = keys.filter(rated).length;
-  const score = dataDays >= MIN_DAYS ? Math.round((100 * sum(known, (f) => f.weight * f.value)) / sum(known, (f) => f.weight)) : null;
+  const weights = sum(known, (f) => f.weight);
+  const score = dataDays >= MIN_DAYS && weights > 0 ? Math.round((100 * sum(known, (f) => f.weight * f.value)) / weights) : null;
 
   return {
     score,

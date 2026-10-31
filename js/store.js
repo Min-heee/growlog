@@ -1,4 +1,5 @@
 // 앱 데이터 저장소: 브라우저 localStorage에 저장하고, 바뀌면 구독한 화면에 알린다.
+import { fromKey } from './dates.js';
 import { uid } from './util.js';
 
 const KEY = 'growlog:v1';
@@ -23,63 +24,171 @@ export function createDefaultState() {
   };
 }
 
-const asMap = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+// ---- 검증 ----
+// 저장된 값과 백업 파일은 모두 여기를 지나 화면에 쓰이므로, 형식이 틀린 값은 고치거나 버린다.
+const isMap = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+const text = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
+const number = (v, min, max) => (typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? v : null);
+const rating = (v) => (Number.isInteger(v) && v >= 1 && v <= 5 ? v : undefined);
+const clock = (v) => (typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? v : undefined);
+function isDate(v) {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const [y, m, d] = v.split('-').map(Number);
+  // Date는 두 자리 연도를 1900년대로 바꾸므로, 윤년만 같은 해로 옮겨 날짜 수를 잰다
+  return m >= 1 && m <= 12 && d >= 1 && d <= new Date(Date.UTC(2000 + y % 400, m, 0)).getUTCDate();
+}
+const compact = (obj) => Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined && v !== ''));
 
-export function normalize(data) {
-  const base = createDefaultState();
-  if (!data || typeof data !== 'object') return base;
+function cleanAreas(list) {
+  const seen = new Set();
+  const areas = list
+    .filter((a) => {
+      if (!isMap(a) || typeof a.id !== 'string' || !a.id || !text(a.label, 40).trim() || seen.has(a.id)) return false;
+      seen.add(a.id);
+      return true;
+    })
+    .slice(0, MAX_AREAS)
+    .map((a) => ({
+      id: a.id,
+      label: text(a.label, 40),
+      emoji: text(a.emoji, 16) || '✨',
+      goal: Math.min(10080, Math.round(number(a.goal, 0, Number.MAX_VALUE) ?? 0)),
+      kind: a.kind === 'recovery' ? 'recovery' : 'load',
+      color: number(a.color, 1, MAX_AREAS),
+      archived: a.archived === true,
+    }));
+  const used = new Set();
+  const free = () => [1, 2, 3, 4, 5, 6].find((c) => !used.has(c) && !areas.some((a) => a.color === c));
+  for (const area of areas) {
+    if (!Number.isInteger(area.color) || used.has(area.color)) area.color = free();
+    used.add(area.color);
+  }
+  return areas;
+}
+
+function cleanEntry(e) {
+  if (!isMap(e) || !isDate(e.date) || typeof e.areaId !== 'string') return null;
+  const minutes = number(e.minutes, 1, Number.MAX_VALUE);
+  if (minutes === null) return null;
   return {
-    ...base,
-    ...data,
-    areas: Array.isArray(data.areas) ? data.areas.map((a) => ({ kind: 'load', goal: 0, archived: false, ...a })) : base.areas,
-    entries: Array.isArray(data.entries) ? data.entries : [],
-    sleep: asMap(data.sleep),
-    checkins: asMap(data.checkins),
+    id: typeof e.id === 'string' && e.id ? e.id : uid(),
+    date: e.date,
+    areaId: e.areaId,
+    minutes: Math.min(1440, Math.round(minutes)), // 예전 스톱워치는 하루를 넘겨 기록할 수 있었다. 버리지 않고 하루 한도로 줄인다.
+    title: text(e.title, 120),
+    source: e.source === 'timer' ? 'timer' : 'manual',
+    createdAt: number(e.createdAt, 0, Number.MAX_SAFE_INTEGER) ?? fromKey(e.date).getTime(),
   };
 }
 
-export const isBackup = (data) => !!data && Array.isArray(data.areas) && Array.isArray(data.entries);
-
-function load() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) return normalize(JSON.parse(raw));
-  } catch {
-    /* 저장소를 못 쓰면 빈 상태로 시작 */
-  }
-  return createDefaultState();
+function cleanByDate(map, clean) {
+  if (!isMap(map)) return {};
+  return Object.fromEntries(
+    Object.entries(map)
+      .filter(([date, value]) => isDate(date) && isMap(value))
+      .map(([date, value]) => [date, compact(clean(value))])
+      .filter(([, value]) => Object.keys(value).length),
+  );
 }
 
-let state = load();
+export function normalize(data) {
+  const base = createDefaultState();
+  if (!isMap(data)) return base;
+  return {
+    version: 1,
+    areas: Array.isArray(data.areas) ? cleanAreas(data.areas) : base.areas,
+    entries: Array.isArray(data.entries) ? data.entries.map(cleanEntry).filter(Boolean) : [],
+    sleep: cleanByDate(data.sleep, (n) => ({ bed: clock(n.bed), wake: clock(n.wake), quality: rating(n.quality) })),
+    checkins: cleanByDate(data.checkins, (c) => ({ energy: rating(c.energy), stress: rating(c.stress), mood: rating(c.mood), note: text(c.note, 200) })),
+    sleepGoal: number(data.sleepGoal, 4, 12) ?? base.sleepGoal,
+    theme: ['light', 'dark'].includes(data.theme) ? data.theme : 'system',
+    sample: data.sample === true,
+  };
+}
+
+export const isBackup = (data) => isMap(data) && Array.isArray(data.areas) && Array.isArray(data.entries) && (cleanAreas(data.areas).length > 0 || data.areas.length === 0);
+
+// ---- 읽기·쓰기 ----
+function read() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    return raw ? normalize(JSON.parse(raw)) : null;
+  } catch {
+    return null; // 저장소를 못 쓰거나 내용이 깨진 경우
+  }
+}
+
+function storageWorks() {
+  try {
+    localStorage.setItem(`${KEY}:probe`, '1');
+    localStorage.removeItem(`${KEY}:probe`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+let state = read() ?? createDefaultState();
+let saveFailed = !storageWorks();
+let unsaved = false; // 저장하지 못한 변경이 메모리에 남아 있다
 const listeners = new Set();
 
 export const getState = () => state;
+export const hasSaveFailed = () => saveFailed;
 export function subscribe(fn) {
   listeners.add(fn);
   return () => listeners.delete(fn);
 }
+const notify = (quiet, background) => listeners.forEach((fn) => fn(state, { quiet, background }));
 
-/** quiet: 입력칸처럼 화면을 다시 그리면 포커스가 날아가는 곳에서 쓴다 */
-function commit(mutate, { quiet = false } = {}) {
-  const next = mutate(state);
-  if (next) state = next;
+function persist() {
   try {
     localStorage.setItem(KEY, JSON.stringify(state));
+    saveFailed = false;
+    unsaved = false;
   } catch {
-    /* 저장이 막혀도 화면은 계속 동작 */
+    saveFailed = true;
+    unsaved = true;
   }
-  listeners.forEach((fn) => fn(state, { quiet }));
 }
+
+/** 저장 공간이 다시 생겼을 수 있으니, 앱으로 돌아올 때 못 한 저장을 다시 해본다 */
+export function retrySave() {
+  if (!unsaved) return;
+  persist();
+  if (!saveFailed) notify(true, false);
+}
+
+/**
+ * quiet: 입력칸처럼 화면을 다시 그리면 포커스가 날아가는 곳에서 쓴다.
+ * background: 타이머처럼 사용자가 누르지 않았는데 일어난 변경. 입력 중이면 화면을 나중에 그린다.
+ */
+function commit(mutate, { quiet = false, background = false } = {}) {
+  // 다른 탭이나 설치한 앱이 먼저 저장했을 수 있으니, 저장된 최신 값 위에 변경을 적용한다.
+  // 저장이 실패하는 동안에는 메모리에만 있는 변경을 지키기 위해 다시 읽지 않는다.
+  if (!saveFailed) state = read() ?? state;
+  const next = mutate(state);
+  if (next) state = next;
+  persist();
+  notify(quiet, background);
+}
+
+globalThis.addEventListener?.('storage', (e) => {
+  if (e.key !== KEY && e.key !== null) return; // null이면 저장소 전체가 지워진 것
+  if (unsaved) return; // 저장하지 못한 변경이 메모리에만 있으니 디스크 값으로 덮지 않는다
+  state = read() ?? createDefaultState();
+  notify(false, true);
+});
 
 // ---- 조회 ----
 export const activeAreas = (s = state) => s.areas.filter((a) => !a.archived);
 export const areaById = (id, s = state) => s.areas.find((a) => a.id === id);
 
 // ---- 활동 기록 ----
-export function addEntry({ date, areaId, minutes, title = '', source = 'manual' }) {
+export function addEntry({ date, areaId, minutes, title = '', source = 'manual', createdAt = Date.now() }, opts) {
   commit((s) => {
-    s.entries.push({ id: uid(), date, areaId, minutes: Math.round(minutes), title: title.trim(), source, createdAt: Date.now() });
-  });
+    s.entries.push({ id: uid(), date, areaId, minutes: Math.round(minutes), title: title.trim(), source, createdAt });
+  }, opts);
 }
 export const restoreEntry = (entry) => commit((s) => void s.entries.push(entry));
 export const deleteEntry = (id) =>

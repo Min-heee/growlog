@@ -53,7 +53,7 @@ export function render(state) {
   const series = state.areas.filter((a) => !a.archived || used.has(a.id));
 
   const days = keys.map((k) => {
-    const values = {};
+    const values = Object.create(null); // 영역 id가 constructor 같은 이름이어도 안전하게
     for (const e of entries) if (e.date === k) values[e.areaId] = (values[e.areaId] || 0) + e.minutes;
     return { key: k, label: label(k), title: fmtDay(k), values };
   });

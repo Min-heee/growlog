@@ -1,10 +1,11 @@
 // 설정 화면: 활동 영역·주간 목표, 수면 목표, 테마, 백업
-import { addArea, areaById, canAddArea, getState, isBackup, MAX_AREAS, removeArea, replaceState, resetState, setSleepGoal, setTheme, updateArea } from '../store.js';
+import { addArea, areaById, canAddArea, createDefaultState, getState, isBackup, MAX_AREAS, normalize, removeArea, replaceState, resetState, setSleepGoal, setTheme, updateArea } from '../store.js';
+import { exportData } from '../backup.js';
 import { buildSample } from '../sample.js';
-import { todayKey } from '../dates.js';
 import { installState, promptInstall } from '../pwa.js';
+import { resetTimer } from './timer.js';
 import { clamp, esc } from '../util.js';
-import { areaColor, ask, toast } from '../ui.js';
+import { areaColor, ask, savedToast, toast } from '../ui.js';
 
 const THEMES = [
   ['system', '시스템'],
@@ -60,7 +61,7 @@ function installBody() {
           <li><b>홈 화면에 추가</b>를 골라요.</li>
           <li>오른쪽 위의 <b>추가</b>를 눌러요.</li>
         </ol>
-        <p class="hint">Safari에서 남긴 기록은 설치한 앱으로 옮겨지지 않을 수 있어요. 필요하면 먼저 아래 데이터 칸에서 내보내기를 해두세요.</p>`;
+        <p class="hint">Safari에만 둔 기록은 일주일쯤 열지 않으면 지워질 수 있어요. 또 Safari에서 남긴 기록은 설치한 앱으로 옮겨지지 않을 수 있으니, 먼저 아래 데이터 칸에서 내보내기를 해두세요.</p>`;
     default:
       return `<p class="sub flush">${why} 브라우저 메뉴에서 <b>앱 설치</b>나 <b>홈 화면에 추가</b>를 골라주세요.</p>`;
   }
@@ -109,50 +110,46 @@ export function render(state) {
     </section>`;
 }
 
-async function exportData() {
-  const file = new File([JSON.stringify(getState(), null, 2)], `growlog-backup-${todayKey()}.json`, { type: 'application/json' });
-  // 폰에서는 공유 창을 띄워 파일 앱이나 메신저로 바로 보낼 수 있게 한다
-  if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title: '그로우로그 백업' });
-      toast('백업 파일을 보냈어요');
-    } catch (err) {
-      if (err.name !== 'AbortError') toast('공유하지 못했어요. 다시 시도해주세요.');
-    }
-    return;
-  }
-  const url = URL.createObjectURL(file);
-  const link = Object.assign(document.createElement('a'), { href: url, download: file.name });
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  toast('백업 파일을 내려받았어요');
-}
-
 async function importData(input) {
   const file = input.files?.[0];
   if (!file) return;
-  try {
-    const data = JSON.parse(await file.text());
-    if (!isBackup(data)) throw new Error('not a backup');
-    if (await ask('백업 파일로 지금 데이터를 덮어쓸까요?', '덮어쓰기')) {
-      replaceState(data);
-      toast('백업을 불러왔어요');
-    }
-  } catch {
-    toast('그로우로그 백업 파일이 아니에요');
-  }
   input.value = '';
+  let data;
+  try {
+    data = JSON.parse(await file.text());
+  } catch {
+    data = null;
+  }
+  // 덮어쓰기 전에 파일부터 검증한다. 틀린 파일이면 지금 기록은 그대로 둔다.
+  if (!isBackup(data)) return toast('그로우로그 백업 파일이 아니에요');
+  const skipped = data.entries.length - normalize(data).entries.length;
+  const note = skipped ? ` 형식이 잘못된 기록 ${skipped}개는 빼고 불러와요.` : '';
+  if (!(await ask(`백업 파일로 지금 데이터를 덮어쓸까요?${note}`, '덮어쓰기'))) return;
+  const before = getState();
+  replaceState(data);
+  savedToast('백업을 불러왔어요', { label: '되돌리기', onClick: () => replaceState(before) });
+}
+
+function hasUserData() {
+  const s = getState();
+  const base = createDefaultState();
+  return s.entries.length > 0 || Object.keys(s.checkins).length > 0 || Object.keys(s.sleep).length > 0 || s.sleepGoal !== base.sleepGoal || JSON.stringify(s.areas) !== JSON.stringify(base.areas);
 }
 
 async function loadSample() {
-  const { entries, checkins, sleep } = getState();
-  const hasData = entries.length || Object.keys(checkins).length || Object.keys(sleep).length;
-  if (hasData && !(await ask('지금 기록을 샘플 데이터로 바꿀까요? 기존 기록은 사라져요.', '바꾸기'))) return;
+  if (hasUserData() && !(await ask('지금 기록과 영역 설정을 샘플 데이터로 바꿀까요? 기존 내용은 사라져요.', '바꾸기'))) return;
   replaceState(buildSample());
-  toast('4주치 샘플 데이터를 넣었어요');
+  savedToast('4주치 샘플 데이터를 넣었어요');
   location.hash = '#/today';
+}
+
+/** 입력칸의 값을 저장할 형태로 바꾼다. 이름이 비어 있으면 null */
+function areaFieldValue(el, field) {
+  const value = el.value.trim();
+  if (field === 'goal') return clamp(Math.round(Number(value) || 0), 0, 10080);
+  if (field === 'emoji') return value || '✨';
+  if (field === 'label') return value || null;
+  return value;
 }
 
 export const on = {
@@ -162,14 +159,14 @@ export const on = {
     const { action, id, value } = button.dataset;
     if (action === 'hide-area') {
       updateArea(id, { archived: true });
-      toast('영역을 숨겼어요. 기록은 그대로 남아요.');
+      savedToast('영역을 숨겼어요. 기록은 그대로 남아요.');
     } else if (action === 'restore-area') updateArea(id, { archived: false });
     else if (action === 'remove-area') {
       const area = areaById(id);
       const count = getState().entries.filter((x) => x.areaId === id).length;
       if (await ask(`'${area.label}' 영역과 기록 ${count}개를 삭제할까요? 되돌릴 수 없어요.`, '삭제')) {
         removeArea(id);
-        toast('삭제했어요');
+        savedToast('삭제했어요');
       }
     } else if (action === 'theme') setTheme(value);
     else if (action === 'install') {
@@ -177,40 +174,50 @@ export const on = {
     } else if (action === 'export') exportData();
     else if (action === 'sample') loadSample();
     else if (action === 'reset' && (await ask('모든 기록과 설정을 지울까요? 되돌릴 수 없어요.', '모두 지우기'))) {
+      resetTimer();
       resetState();
-      toast('모두 지웠어요');
+      savedToast('모두 지웠어요');
     }
+  },
+  // 타이머가 끝나 화면을 다시 그리거나 앱을 벗어나도 고치던 내용이 남도록 글자마다 저장한다
+  input(e) {
+    const el = e.target;
+    const field = el.dataset.areaField;
+    if (field && field !== 'kind' && areaFieldValue(el, field) !== null) updateArea(el.dataset.id, { [field]: areaFieldValue(el, field) }, { quiet: true });
   },
   change(e) {
     const el = e.target;
     const field = el.dataset.areaField;
     // 입력칸을 고치는 동안 포커스가 날아가지 않도록 화면을 다시 그리지 않고 저장만 한다
     if (field) {
-      const area = areaById(el.dataset.id);
-      let value = el.value.trim();
-      if (field === 'goal') value = Math.max(0, Math.round(Number(value) || 0));
-      if (field === 'emoji' && !value) value = '✨';
-      if (field === 'label' && !value) {
-        el.value = area.label;
+      const value = areaFieldValue(el, field);
+      if (value === null) {
+        // 글자마다 저장하므로 저장된 이름은 지우다 남은 글자다. 고치기 전 이름으로 되돌린다.
+        el.value = el.defaultValue;
+        updateArea(el.dataset.id, { label: el.defaultValue }, { quiet: true });
         toast('이름은 비워둘 수 없어요');
         return;
       }
       updateArea(el.dataset.id, { [field]: value }, { quiet: true });
       el.value = value;
-      toast('저장했어요');
+      el.defaultValue = value;
+      savedToast('저장했어요');
     } else if ('sleepGoal' in el.dataset) {
       const hours = clamp(Number(el.value) || 7, 4, 12);
       setSleepGoal(hours, { quiet: true });
       el.value = hours;
-      toast('저장했어요');
+      savedToast('저장했어요');
     } else if ('import' in el.dataset) importData(el);
   },
   submit(e) {
     e.preventDefault();
     const { emoji, label, goal, kind } = e.target.elements;
     const name = label.value.trim();
-    if (!name) return toast('영역 이름을 입력해주세요');
-    addArea({ label: name, emoji: emoji.value.trim() || '✨', goal: Math.max(0, Math.round(Number(goal.value) || 0)), kind: kind.value });
-    toast(`'${name}' 영역을 추가했어요`);
+    if (!name) {
+      document.activeElement?.blur(); // 키보드에 가려지지 않도록
+      return toast('영역 이름을 입력해주세요');
+    }
+    addArea({ label: name, emoji: emoji.value.trim() || '✨', goal: clamp(Math.round(Number(goal.value) || 0), 0, 10080), kind: kind.value });
+    savedToast(`'${name}' 영역을 추가했어요`);
   },
 };

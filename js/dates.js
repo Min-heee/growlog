@@ -46,7 +46,7 @@ export function sleepHours(bed, wake) {
     const [h, m] = t.split(':').map(Number);
     return h * 60 + m;
   };
-  let diff = toMin(wake) - toMin(bed);
-  if (diff <= 0) diff += 1440;
-  return diff / 60;
+  const diff = (toMin(wake) - toMin(bed) + 1440) % 1440;
+  // 같은 시각이거나 16시간이 넘으면 오전·오후를 잘못 고른 경우로 보고 값을 내지 않는다
+  return diff === 0 || diff > 960 ? null : diff / 60;
 }

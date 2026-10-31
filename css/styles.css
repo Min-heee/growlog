@@ -95,6 +95,7 @@ body {
   font: 15px/1.5 var(--font);
   -webkit-font-smoothing: antialiased;
   word-break: keep-all;
+  overflow-wrap: anywhere; /* 띄어쓰기 없는 긴 이름도 화면 밖으로 나가지 않게 */
 }
 a { color: inherit; }
 button { font: inherit; color: inherit; }
@@ -260,13 +261,16 @@ h1 { margin: 2px 0 0; font-size: 26px; line-height: 1.25; letter-spacing: -0.03e
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  max-width: 100%;
   height: 36px;
+  overflow: hidden;
   padding: 0 14px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface);
   font-size: 14px;
   font-weight: 700;
+  white-space: nowrap;
   cursor: pointer;
 }
 .chip[aria-pressed="true"] { background: var(--primary-bg); color: var(--primary-ink); border-color: transparent; }
@@ -344,12 +348,13 @@ select {
   gap: 12px;
   margin: 4px 0 12px;
   padding: 10px 10px 10px 14px;
-  border: 1px solid color-mix(in srgb, var(--s1) 35%, transparent);
+  border: 1px solid var(--border);
   border-radius: 14px;
-  background: color-mix(in srgb, var(--s1) 10%, var(--surface));
+  background: var(--surface-2);
   font-size: 14px;
   font-weight: 600;
 }
+.banner .btn { flex: none; white-space: nowrap; }
 .link-card { display: flex; align-items: center; gap: 12px; text-decoration: none; }
 .chev { color: var(--muted); font-size: 26px; line-height: 1; }
 .mini-score { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
@@ -359,8 +364,8 @@ select {
 .sleep-total { font-size: 15px; font-weight: 800; }
 .goal + .goal { margin-top: 14px; }
 .goal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; font-size: 14px; }
-.goal-name { display: flex; align-items: center; gap: 8px; font-weight: 700; }
-.goal-val { color: var(--ink-2); font-size: 13px; text-align: right; }
+.goal-name { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 700; }
+.goal-val { flex: none; color: var(--ink-2); font-size: 13px; text-align: right; }
 .goal-val strong { color: var(--ink); }
 .met { color: var(--success); font-weight: 800; }
 .bar { height: 8px; overflow: hidden; border-radius: 999px; background: var(--surface-2); }
@@ -384,7 +389,7 @@ select {
 .card .tiles { margin: 0; }
 .tile { padding: 12px 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
 .tile-label { color: var(--ink-2); font-size: 12px; font-weight: 700; }
-.tile-value { margin-top: 2px; font-size: 21px; font-weight: 800; letter-spacing: -0.02em; }
+.tile-value { margin-top: 2px; font-size: 21px; font-weight: 800; letter-spacing: -0.02em; white-space: nowrap; }
 .tile-value small { margin-left: 2px; color: var(--ink-2); font-size: 13px; font-weight: 600; }
 
 .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 8px; padding: 0; color: var(--ink-2); font-size: 13px; list-style: none; }
@@ -397,15 +402,18 @@ select {
 .chart .tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .chart .hit { fill: transparent; outline: none; }
 .chart .col { transition: opacity 0.15s; }
-.chart svg:has(.col:hover) .col:not(:hover),
-.chart svg:has(.col:focus-within) .col:not(:focus-within) { opacity: 0.45; }
+.chart svg:has(.hit:focus-visible) .col:not(:has(.hit:focus-visible)) { opacity: 0.45; }
+@media (hover: hover) {
+  .chart svg:has(.col:hover) .col:not(:hover) { opacity: 0.45; }
+  .chart .hitg:hover .xhair, .chart .hitg:hover .hover-dot { opacity: 1; }
+}
+.chart .hitg.active .xhair, .chart .hitg.active .hover-dot { opacity: 1; }
 .chart .ref { stroke: var(--ink-2); stroke-width: 1; pointer-events: none; }
 .chart .ref-label { fill: var(--ink-2); font-size: 11px; font-weight: 700; pointer-events: none; }
 .chart .end-label { fill: var(--ink); font-size: 12px; font-weight: 800; pointer-events: none; }
 .chart .xhair { stroke: var(--axis); stroke-width: 1; opacity: 0; pointer-events: none; }
 .chart .hover-dot { opacity: 0; pointer-events: none; }
-.chart .hitg:hover .xhair, .chart .hitg:focus-within .xhair,
-.chart .hitg:hover .hover-dot, .chart .hitg:focus-within .hover-dot { opacity: 1; }
+.chart .hitg:has(.hit:focus-visible) .xhair, .chart .hitg:has(.hit:focus-visible) .hover-dot { opacity: 1; }
 
 details.table-view { margin-top: 10px; font-size: 13px; }
 details.table-view summary { color: var(--ink-2); font-weight: 700; cursor: pointer; }
@@ -427,7 +435,7 @@ th { color: var(--ink-2); font-weight: 700; }
   height: 28px;
   padding: 0 11px 0 8px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--status) 16%, transparent);
+  background: var(--surface-2);
   color: var(--ink);
   font-size: 13px;
   font-weight: 800;
@@ -438,7 +446,7 @@ th { color: var(--ink-2); font-weight: 700; }
 .badge-warning { --status: var(--warning); }
 .badge-serious { --status: var(--serious); }
 .badge-critical { --status: var(--critical); }
-.meter { height: 10px; margin: 18px 0 6px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--status) 18%, var(--surface-2)); }
+.meter { height: 10px; margin: 18px 0 6px; overflow: hidden; border-radius: 999px; background: var(--surface-2); }
 .meter > span { display: block; height: 100%; border-radius: 999px; background: var(--status); }
 .meter-scale { position: relative; height: 18px; color: var(--muted); font-size: 11px; font-weight: 600; }
 .meter-scale span { position: absolute; top: 0; padding-left: 4px; border-left: 1px solid var(--axis); }
@@ -455,6 +463,12 @@ th { color: var(--ink-2); font-weight: 700; }
 .advice-icon { flex: none; font-size: 18px; line-height: 1.3; }
 .disclaimer { margin: 16px 4px 0; color: var(--muted); font-size: 12px; }
 
+@supports (background: color-mix(in srgb, red 10%, blue)) {
+  .banner { border-color: color-mix(in srgb, var(--s1) 35%, transparent); background: color-mix(in srgb, var(--s1) 10%, var(--surface)); }
+  .badge { background: color-mix(in srgb, var(--status) 16%, transparent); }
+  .meter { background: color-mix(in srgb, var(--status) 18%, var(--surface-2)); }
+}
+
 /* ---------- 타이머 ---------- */
 .timer-face { position: relative; width: min(280px, 72vw); aspect-ratio: 1; margin: 20px auto 18px; }
 .timer-face svg { width: 100%; height: 100%; transform: rotate(-90deg); }
@@ -465,6 +479,8 @@ th { color: var(--ink-2); font-weight: 700; }
 .timer-phase { margin-top: 8px; color: var(--ink-2); font-size: 14px; font-weight: 700; }
 .timer-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .timer-actions .btn { min-width: 120px; }
+.timer-note { display: none; margin: 14px 0 0; text-align: center; }
+@media (pointer: coarse) { .timer-note { display: block; } }
 
 /* ---------- 설정 ---------- */
 .sub.flush { margin-bottom: 0; }
@@ -488,12 +504,28 @@ th { color: var(--ink-2); font-weight: 700; }
 .area-row .suffix-in { grid-area: goal; }
 .area-row select { grid-area: kind; }
 .area-row > .btn { grid-area: act; padding: 0; }
+@media (max-width: 380px) {
+  .area-row { grid-template-areas: "emoji name name" "goal goal goal" "kind kind act"; grid-template-columns: 52px 1fr 60px; }
+}
 @media (min-width: 640px) {
   .area-row { grid-template-areas: "emoji name goal kind act"; grid-template-columns: 52px 1fr 140px 96px 60px; }
 }
 .hidden-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
 .hidden-row .grow { color: var(--ink-2); font-weight: 700; }
 .hidden-row small { color: var(--muted); font-weight: 600; }
+
+.save-warning {
+  position: sticky; /* 저장 실패는 아래쪽 입력칸에서 일어나므로 내려가 있어도 보여야 한다 */
+  top: calc(60px + env(safe-area-inset-top));
+  z-index: 9;
+  margin: 4px 0 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--critical);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
 
 /* ---------- 확인 창·툴팁·토스트 ---------- */
 .dialog {

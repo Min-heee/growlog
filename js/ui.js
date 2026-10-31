@@ -1,13 +1,14 @@
 // 여러 화면이 함께 쓰는 UI 조각: 다시 그리기, 토스트, 툴팁, 상태 배지, 기록 목록
 import { getTip } from './charts.js';
+import { hasSaveFailed } from './store.js';
 import { esc, fmtHM } from './util.js';
 
 let refresher = () => {};
 export const setRefresher = (fn) => {
   refresher = fn;
 };
-/** 저장소 변경 없이 현재 화면을 다시 그린다 */
-export const refresh = () => refresher();
+/** 저장소 변경 없이 현재 화면을 다시 그린다. background면 사용자가 입력을 마친 뒤에 그린다. */
+export const refresh = (opts) => refresher(opts);
 
 export const areaColor = (area) => `var(--s${area?.color ?? 0})`;
 
@@ -60,6 +61,9 @@ export function toast(message, action) {
   toastTimer = setTimeout(hide, action ? 5000 : 2400);
 }
 
+/** 저장했다고 알리는 안내. 저장이 안 되는 동안에는 성공했다고 말하지 않는다. */
+export const savedToast = (message, action) => toast(hasSaveFailed() ? '화면에는 보이지만 저장되지 않았어요' : message, action);
+
 /** 지우기처럼 되돌릴 수 없는 일 앞에서 묻는 확인 창. true/false로 끝난다. */
 export function ask(message, confirmLabel) {
   return new Promise((resolve) => {
@@ -90,12 +94,20 @@ export function ask(message, confirmLabel) {
 // 영역 이름은 사용자가 입력한 값이라 textContent로만 넣는다.
 export function initTooltips() {
   const el = document.getElementById('tooltip');
+  let marked = null; // 터치에는 hover가 없어서, 지금 가리키는 점을 클래스로 표시한다
+  const mark = (group) => {
+    marked?.classList.remove('active');
+    marked = group;
+    marked?.classList.add('active');
+  };
   const hide = () => {
     el.hidden = true;
+    mark(null);
   };
   const show = (target, x, y) => {
     const tip = getTip(target.dataset.tip);
     if (!tip) return hide();
+    mark(target.closest('.hitg'));
     const title = document.createElement('div');
     title.className = 'tip-title';
     title.textContent = tip.title;
@@ -120,7 +132,9 @@ export function initTooltips() {
     el.style.transform = `translate(${left}px, ${top}px)`;
   };
   const fromPointer = (e) => {
-    const target = e.target.closest?.('[data-tip]');
+    // 터치로 끌 때 e.target은 처음 누른 막대에 고정되므로 손가락 아래 요소를 직접 찾는다
+    const under = e.pointerType === 'touch' ? document.elementFromPoint(e.clientX, e.clientY) : e.target;
+    const target = under?.closest?.('[data-tip]');
     if (target) show(target, e.clientX, e.clientY);
     else hide();
   };
@@ -132,6 +146,9 @@ export function initTooltips() {
     const r = target.getBoundingClientRect();
     show(target, r.left + r.width / 2, r.top + 12);
   });
-  document.addEventListener('focusout', hide);
+  document.addEventListener('focusout', (e) => {
+    // 다른 막대를 탭해 포커스가 옮겨갈 때는 방금 띄운 툴팁을 닫지 않는다
+    if (!e.relatedTarget?.closest?.('[data-tip]')) hide();
+  });
   addEventListener('scroll', hide, { passive: true });
 }
