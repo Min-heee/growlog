@@ -148,6 +148,30 @@ test('되돌리기를 두 번 눌러도 기록이 둘이 되지 않는다', asyn
   assert.equal(disk().entries.length, 1);
 });
 
+test('이미 닫은 표시는 다시 닫아도 날짜가 바뀌지 않고, 되돌리면 방금 닫은 것만 열린다', async () => {
+  const base = seeded();
+  base.marks = [
+    { id: 'a', date: '2026-10-01', sev: 3, fuzz: 0, closedOn: '2026-10-03', createdAt: 1 },
+    { id: 'b', date: '2026-10-05', sev: 2, fuzz: 0, createdAt: 2 },
+  ];
+  const { store, disk } = await boot(base);
+  store.closeMarks(['a', 'b'], '2026-10-09');
+  assert.deepEqual(disk().marks.map((m) => m.closedOn), ['2026-10-03', '2026-10-09']);
+  store.reopenMarks(['b']);
+  assert.deepEqual(disk().marks.map((m) => m.closedOn), ['2026-10-03', undefined]);
+});
+
+test('저장 실패 중에 남긴 표시는 다시 적용해도 하나다', async () => {
+  const { store, gate, disk } = await boot(seeded());
+  gate.writes = false;
+  store.addMark({ date: '2026-10-05', sev: 2, fuzz: 0 });
+  store.addRebase('2026-10-06');
+  const ids = store.getState().marks.map((m) => m.id);
+  gate.writes = true;
+  store.retrySave();
+  assert.deepEqual(disk().marks.map((m) => m.id), ids);
+});
+
 test('다른 탭이 영역을 채우면 추가에 실패했다고 알려준다', async () => {
   const base = seeded();
   base.areas = [1, 2, 3, 4, 5, 6].map((color) => ({ id: `a${color}`, label: `영역${color}`, emoji: '✨', goal: 0, kind: 'load', color }));

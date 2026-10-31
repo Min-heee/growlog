@@ -6,10 +6,10 @@ const tips = new Map();
 let seq = 0;
 export const resetTips = () => tips.clear();
 export const getTip = (id) => tips.get(id);
-function tipAttrs(tip) {
+function tipAttrs(tip, focusable = true) {
   const id = `tip${++seq}`;
   tips.set(id, tip);
-  return `data-tip="${id}" tabindex="0"`;
+  return `data-tip="${id}"${focusable ? ' tabindex="0"' : ''}`;
 }
 
 function niceScale(top, steps = 4) {
@@ -108,18 +108,28 @@ export function columns(el, { points, color, ref, label }) {
   el.innerHTML = svg(W, H, body, label);
 }
 
-/** 선 그래프. points: [{ label, title, value|null }] — 기록이 없는 날은 선을 끊는다 */
-export function lineChart(el, { points, color, max = 100, ticks = [0, 50, 100], name, label }) {
+/**
+ * 쌓인 부하 추이. 숫자로 읽지 않도록 세로축 값을 쓰지 않고, 내 평소 범위를 띠로 깐다. 기록이 없는 날은 선을 끊는다.
+ * points: [{ label, title, value|null, rows }], marks: 표시한 날의 points 번호, zoneTop: 평소 범위의 위쪽 값
+ */
+export function zoneChart(el, { points, marks, zoneTop, color, label }) {
   const W = Math.max(260, el.clientWidth);
   const H = 180;
-  const m = { t: 12, r: 30, b: 26, l: 30 };
+  const m = { t: 16, r: 12, b: 26, l: 12 };
   const pw = W - m.l - m.r;
   const ph = H - m.t - m.b;
   const n = points.length;
+  const values = points.map((p) => p.value).filter((v) => v != null);
+  const low = Math.min(-2.5, ...values);
+  const high = Math.max(zoneTop + 2, ...values) + 0.3;
   const xAt = (i) => m.l + (n > 1 ? (pw * i) / (n - 1) : pw / 2);
-  const y = (v) => m.t + ph - (v / max) * ph;
+  const y = (v) => m.t + ph - ((v - low) / (high - low)) * ph;
 
-  let body = frame({ W, m, ph, ticks, y, unit: '', labels: points.map((p) => p.label), xAt });
+  let body = frame({ W, m, ph, ticks: [], y, unit: '', labels: points.map((p) => p.label), xAt });
+  body += `<rect class="zone" x="${m.l}" y="${y(zoneTop)}" width="${pw}" height="${y(low) - y(zoneTop)}"/>`;
+  body += `<line class="zone-edge" x1="${m.l}" x2="${m.l + pw}" y1="${y(zoneTop)}" y2="${y(zoneTop)}"/>`;
+  body += `<text class="zone-label" x="${m.l + 8}" y="${y(low) - 8}">내 평소</text>`;
+  for (const i of marks) body += `<path class="mark" d="M${xAt(i)},${m.t - 2}l-4,-7h8z"/>`;
   let d = '';
   points.forEach((p, i) => {
     if (p.value == null) return;
@@ -132,18 +142,12 @@ export function lineChart(el, { points, color, max = 100, ticks = [0, 50, 100], 
     body += `<circle cx="${xAt(i)}" cy="${y(p.value)}" r="3" style="fill:${color}"/>`;
   });
   const last = points.findLastIndex((p) => p.value != null);
-  if (last >= 0) {
-    const cx = xAt(last);
-    const cy = y(points[last].value);
-    body += `<circle cx="${cx}" cy="${cy}" r="4" style="fill:${color};stroke:var(--surface)" stroke-width="2"/>`;
-    body += `<text class="end-label" x="${cx + 8}" y="${cy}" dominant-baseline="middle">${points[last].value}</text>`;
-  }
+  if (last >= 0) body += `<circle cx="${xAt(last)}" cy="${y(points[last].value)}" r="4" style="fill:${color};stroke:var(--surface)" stroke-width="2"/>`;
   const half = n > 1 ? pw / (n - 1) / 2 : pw / 2;
   points.forEach((p, i) => {
     const x = xAt(i);
-    const tip = { title: p.title, rows: [{ color, label: name, value: p.value == null ? '기록 없음' : String(p.value) }] };
     const dot = p.value == null ? '' : `<circle class="hover-dot" cx="${x}" cy="${y(p.value)}" r="4" style="fill:${color};stroke:var(--surface)" stroke-width="2"/>`;
-    body += `<g class="hitg"><line class="xhair" x1="${x}" x2="${x}" y1="${m.t}" y2="${m.t + ph}"/>${dot}<rect class="hit" x="${x - half}" y="${m.t}" width="${half * 2}" height="${ph}" ${tipAttrs(tip)}/></g>`;
+    body += `<g class="hitg"><line class="xhair" x1="${x}" x2="${x}" y1="${m.t}" y2="${m.t + ph}"/>${dot}<rect class="hit" x="${x - half}" y="${m.t}" width="${half * 2}" height="${ph}" ${tipAttrs({ title: p.title, rows: p.rows }, false)}/></g>`;
   });
   el.innerHTML = svg(W, H, body, label);
 }

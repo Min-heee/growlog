@@ -8,14 +8,17 @@ import { initTooltips, savedToast, setRefresher } from './ui.js';
 import * as today from './views/today.js';
 import * as timer from './views/timer.js';
 import * as stats from './views/stats.js';
-import * as burnout from './views/burnout.js';
+import * as recovery from './views/recovery.js';
 import * as settings from './views/settings.js';
+import * as help from './views/help.js';
 
-const views = { today, timer, stats, burnout, settings };
+const views = { today, timer, stats, recovery, settings, help };
+const ALIASES = { burnout: 'recovery' }; // 설치된 앱의 옛 바로가기
 const root = document.getElementById('view');
 
 function routeName() {
-  const name = location.hash.replace(/^#\/?/, '');
+  const hash = location.hash.replace(/^#\/?/, '');
+  const name = Object.hasOwn(ALIASES, hash) ? ALIASES[hash] : hash;
   return Object.hasOwn(views, name) ? name : 'today';
 }
 let shown = routeName(); // 지금 그려져 있는 화면. 주소가 먼저 바뀐 뒤에 오는 입력 이벤트도 이 화면이 받는다.
@@ -67,6 +70,22 @@ function showSaveWarning() {
   if (warning) warning.hidden = !hasSaveFailed();
 }
 
+// 다시 그려도 펼쳐둔 표나 설명이 닫히지 않게 한다. 닫히면 아래 내용이 위로 밀려 보던 자리를 잃는다.
+function detailsByKey() {
+  const seen = new Map();
+  return [...root.querySelectorAll('details')].map((el) => {
+    const text = el.querySelector('summary')?.textContent;
+    seen.set(text, (seen.get(text) ?? 0) + 1);
+    return [`${text}:${seen.get(text)}`, el]; // 표로 보기처럼 이름이 같은 것은 순서로 나눈다
+  });
+}
+const openDetails = () => detailsByKey().filter(([, el]) => el.open).map(([key]) => key);
+function reopenDetails(open) {
+  detailsByKey().forEach(([key, el]) => {
+    if (open.includes(key)) el.open = true;
+  });
+}
+
 /** 입력 중인 칸이 든 덩어리만 남기고 나머지를 새로 그린다. 덩어리 구성이 바뀌었으면 입력이 끝날 때까지 기다린다. */
 function renderAround(field) {
   if (shown !== routeName() || todayKey() !== renderedDay) return; // 자정을 넘겼다면 입력 중인 칸은 지난날의 칸이니 그대로 두고 나중에 그린다
@@ -80,11 +99,13 @@ function renderAround(field) {
   const parts = [...next.content.children];
   const now = [...root.children];
   if (parts.length !== now.length) return;
+  const open = openDetails();
   resetTips();
   now.forEach((el, i) => {
     if (!el.contains(field)) el.replaceWith(parts[i]);
   });
   views[shown].mount?.(root, getState());
+  reopenDetails(open);
 }
 
 // 타이머가 끝나거나 다른 탭이 저장해도 입력 중인 칸은 그대로 둔다. 다시 그리면 키보드가 내려가고 글자가 사라진다.
@@ -112,6 +133,7 @@ function render() {
   const state = getState();
   const name = routeName();
   const view = views[name];
+  const open = shown === name ? openDetails() : [];
   shown = name;
   const focus = focusSelector(document.activeElement);
   applyTheme(state.theme);
@@ -123,6 +145,7 @@ function render() {
     console.error(err);
     root.innerHTML = CRASH_SCREEN;
   }
+  reopenDetails(open);
   showSaveWarning();
   document.querySelectorAll('[data-nav]').forEach((a) => {
     if (a.dataset.nav === name) a.setAttribute('aria-current', 'page');
@@ -176,6 +199,7 @@ addEventListener('hashchange', () => {
   if (root.contains(document.activeElement)) document.activeElement.blur(); // 뒤로 가기로 떠나도 입력하던 칸이 저장되게 한다
   render();
   scrollTo(0, 0);
+  views[shown].arrive?.(root);
 });
 // 자정을 넘겨 다시 열었을 때 '오늘'이 바뀌도록. 폰에서 앱을 오갈 때마다 다시 그리면 입력 중인 칸의 포커스가 풀린다.
 document.addEventListener('visibilitychange', () => {

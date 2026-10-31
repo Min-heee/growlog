@@ -1,17 +1,25 @@
 // 오늘 화면: 컨디션·수면 체크인, 활동 기록, 이번 주 목표
-import { activeAreas, addEntry, areaById, getState, resetState, setCheckin, setSleep } from '../store.js';
-import { addDays, fmtLong, rangeKeys, sleepHours, todayKey, weekStartKey } from '../dates.js';
-import { computeBurnout, MIN_DAYS } from '../burnout.js';
+import { activeAreas, addEntry, areaById, getState, resetState, setCheckin, setSleep, setSupportSeen } from '../store.js';
+import { addDays, fmtDay, fmtLong, rangeKeys, sleepHours, todayKey, weekStartKey } from '../dates.js';
+import { BANDS, bandWord, insight } from '../insight.js';
 import { isIOS, isStandalone } from '../pwa.js';
+import { openMarkForm } from './recovery.js';
 import { avg, esc, fmtHM, fmtHours, sum } from '../util.js';
-import { areaColor, ask, entryList, refresh, savedToast, statusBadge, toast } from '../ui.js';
+import { areaColor, ask, entryList, ratingScale, refresh, savedToast, toast } from '../ui.js';
 
 const SCALES = [
   { field: 'energy', label: '에너지', low: '바닥', high: '넘침' },
   { field: 'stress', label: '스트레스', low: '평온', high: '극심' },
   { field: 'mood', label: '기분', low: '가라앉음', high: '최고' },
 ];
+const DETACH_SCALE = { field: 'detach', label: '할 일 생각에서 벗어남 (선택)', low: '계속 붙잡힘', high: '완전히 벗어남' };
 const SLEEP_SCALE = { field: 'quality', label: '수면의 질', low: '뒤척임', high: '개운함' };
+const CATCH_UP = [
+  [0, '오늘'],
+  [1, '어제'],
+  [2, '그제'],
+  [3, '3일 전'],
+];
 const QUICK_MINUTES = [10, 30, 60];
 const PLACEHOLDER = { exercise: '예: 러닝 5km', study: '예: 영어 단어 50개', dev: '예: 로그인 기능 구현' };
 
@@ -21,51 +29,61 @@ let savedAt = 0; // 저장 직후 한 번 더 눌려도 오류 안내로 덮지 
 // 자정을 넘겨 화면을 켜둔 채 입력해도 화면에 보이는 날짜로 저장되도록 그릴 때의 날짜를 쓴다
 let shownDay = todayKey();
 const OLDEST_DAYS = 29; // 통계에서 볼 수 있는 가장 오래된 날
+let daysBack = 0; // 밀린 날을 채우는 중이면 며칠 전인지
 
-function scale({ field, label, low, high }, value, action) {
-  const buttons = [1, 2, 3, 4, 5]
-    .map((n) => `<button type="button" class="seg-btn" data-action="${action}" data-field="${field}" data-value="${n}" aria-pressed="${value === n}" aria-label="${label} ${n}점">${n}</button>`)
-    .join('');
-  return `<div class="scale">
-    <div class="scale-head"><span class="scale-label">${label}</span><span class="scale-hint">1 ${low} · 5 ${high}</span></div>
-    <div class="seg" role="group" aria-label="${label}">${buttons}</div>
-  </div>`;
-}
-
-function burnoutCard(state, today) {
-  const b = computeBurnout(state, today);
-  if (b.score == null) {
-    return `<a class="card link-card" href="#/burnout">
-      <div class="grow"><p class="eyebrow">번아웃 지수</p><p class="mini-advice">컨디션이나 수면을 ${MIN_DAYS}일 기록하면 지수를 알려드려요. (지금 ${b.dataDays}일)</p></div>
-      <span class="chev" aria-hidden="true">›</span>
-    </a>`;
-  }
-  return `<a class="card link-card" href="#/burnout">
+function loadCard(state, i) {
+  if (state.profile.hide) return '';
+  const words = {
+    empty: i.savedDays ? ['컨디션 기록이 아직 없어요', `기록 ${i.savedDays}일은 저장돼 있어요. 컨디션을 두 가지 이상 남기면 비교할 수 있어요.`] : ['기록을 시작해볼까요', '컨디션을 남기면 내 평소를 알아가기 시작해요.'],
+    building: [BANDS.building, `기록 ${i.entries}${i.entries < 7 ? '/7' : '일'}. 쌓일수록 내 기준에 가까워져요.`],
+    unknown: ['최근 컨디션 기록이 없어서 지금은 알 수 없어요', '아래에서 3일 전까지 채울 수 있어요.'],
+    restart: ['다시 시작해요', '쌓인 부하를 처음부터 다시 쌓아요.'],
+    noUsual: [BANDS.building, '아직 비교할 평소가 없어요. 기록은 그대로 쌓이고 있어요.'],
+    trend: [i.band ? bandWord(i) : '', `기록 ${i.entries}일 · 최근 14일 중 힘든 날 ${i.recent.hard}일`],
+  }[i.status];
+  return `<a class="card link-card" href="#/recovery">
     <div class="grow">
-      <p class="eyebrow">번아웃 지수 · 최근 7일</p>
-      <div class="mini-score"><strong>${b.score}</strong><span>/100</span>${statusBadge(b.level)}</div>
-      <p class="mini-advice">${esc(b.advice[0].text)}</p>
+      <p class="eyebrow">오늘의 부하와 회복</p>
+      <p class="mini-band">${esc(words[0])}</p>
+      <p class="mini-advice">${esc(words[1])}</p>
     </div>
     <span class="chev" aria-hidden="true">›</span>
   </a>`;
 }
 
+function supportLine({ support }) {
+  return support
+    ? `<div class="banner"><span>${esc(support.text)}</span><a class="btn small" href="#/help">도움받을 곳</a><button type="button" class="btn small ghost" data-action="support-close">닫기</button></div>`
+    : '';
+}
+
+function dayChips(today) {
+  const chips = CATCH_UP.map(([back, label]) => `<button type="button" class="chip small" data-action="back" data-value="${back}" aria-pressed="${back === daysBack}">${label}</button>`).join('');
+  return `<div class="chips" role="group" aria-label="어느 날을 남길까요">${chips}</div>`;
+}
+
 function conditionCard(state, today) {
-  const checkin = state.checkins[today] || {};
-  const night = state.sleep[today] || {};
+  const day = addDays(today, -daysBack);
+  const checkin = state.checkins[day] || {};
+  const night = state.sleep[day] || {};
   const hours = sleepHours(night.bed, night.wake);
   return `<section class="card">
-    <div class="card-head"><h2>오늘의 컨디션</h2></div>
-    ${SCALES.map((s) => scale(s, checkin[s.field], 'checkin')).join('')}
+    <div class="card-head"><h2>${daysBack ? `${fmtDay(day)}은 어땠나요` : '오늘은 어땠나요'}</h2></div>
+    <div class="stack">
+      ${dayChips(today)}
+      <div>${SCALES.map((s) => ratingScale(s, checkin[s.field], 'checkin')).join('')}</div>
+      ${ratingScale(DETACH_SCALE, checkin.detach, 'checkin')}
+      <label class="field"><span>한 줄 메모 (선택)</span><input type="text" data-note maxlength="120" value="${esc(checkin.note || '')}" placeholder="기분이나 있었던 일을 짧게 남겨보세요"></label>
+    </div>
     <div class="divider"></div>
-    <div class="card-head"><h3>어젯밤 수면</h3><span class="sleep-total" data-sleep-total>${hours != null ? fmtHours(hours) : '–'}</span></div>
+    <div class="card-head"><h3>지난밤 수면</h3><span class="sleep-total" data-sleep-total>${hours != null ? fmtHours(hours) : '–'}</span></div>
     <div class="stack">
       <div class="row">
         <label class="field grow"><span>잠든 시간</span><input type="time" data-sleep="bed" value="${esc(night.bed || '')}"></label>
         <label class="field grow"><span>일어난 시간</span><input type="time" data-sleep="wake" value="${esc(night.wake || '')}"></label>
       </div>
-      ${scale(SLEEP_SCALE, night.quality, 'sleep')}
-      <label class="field"><span>한 줄 메모</span><input type="text" data-note maxlength="120" value="${esc(checkin.note || '')}" placeholder="오늘 기분이나 컨디션을 짧게 남겨보세요"></label>
+      ${ratingScale(SLEEP_SCALE, night.quality, 'sleep')}
+      <button type="button" class="btn block" data-action="mark-day">많이 지친 날이었나요? 지친 날로 표시</button>
     </div>
   </section>`;
 }
@@ -144,8 +162,9 @@ function todayCard(state, today) {
 }
 
 export function render(state) {
-  shownDay = todayKey();
-  const today = shownDay;
+  const today = todayKey();
+  if (today !== shownDay) daysBack = 0; // 날이 바뀌면 어제 칸을 열어둔 채로 남기지 않는다
+  shownDay = today;
   const areas = activeAreas(state);
   // 입력 중이면 고른 영역을 몰래 바꾸지 않는다. 지워졌다면 기록할 때 알려준다.
   if (!document.activeElement?.closest?.('[data-form="entry"]') && !areas.some((a) => a.id === draft.areaId)) draft.areaId = areas[0]?.id ?? null;
@@ -156,25 +175,36 @@ export function render(state) {
     isIOS() && !isStandalone()
       ? '<div class="banner"><span>Safari에만 둔 기록은 일주일쯤 열지 않으면 지워질 수 있어요.</span><a class="btn small" href="#/settings">홈 화면에 추가</a></div>'
       : '';
+  const i = insight(state, today);
   return `${banner}${safariTip}
     <header class="page-head">
       <p class="eyebrow">오늘</p>
       <h1>${fmtLong(today)}</h1>
     </header>
-    <div data-slot="burnout">${burnoutCard(state, today)}</div>
+    ${supportLine(i)}
+    <div data-slot="load">${loadCard(state, i)}</div>
     ${conditionCard(state, today)}
     ${entryCard(areas, today)}
     <div data-slot="week">${weekCard(state, areas, today)}</div>
     ${todayCard(state, today)}`;
 }
 
+const pickedDay = () => addDays(shownDay, -daysBack);
+
 export const on = {
   async click(e) {
     const button = e.target.closest('[data-action]');
     if (!button) return;
     const { action, field, value, id } = button.dataset;
-    if (action === 'checkin') setCheckin(shownDay, { [field]: Number(value) });
-    else if (action === 'sleep') setSleep(shownDay, { [field]: Number(value) });
+    if (action === 'checkin') setCheckin(pickedDay(), { [field]: Number(value) });
+    else if (action === 'sleep') setSleep(pickedDay(), { [field]: Number(value) });
+    else if (action === 'back') {
+      daysBack = Number(value);
+      refresh();
+    } else if (action === 'mark-day') {
+      openMarkForm(pickedDay());
+      location.hash = '#/recovery';
+    } else if (action === 'support-close') setSupportSeen();
     else if (action === 'pick-area') {
       draft.areaId = id;
       refresh();
@@ -191,18 +221,18 @@ export const on = {
     const key = e.target.dataset.draft;
     if (key) draft[key] = e.target.value;
     // 메모는 글자마다 저장해, 입력 중에 앱을 벗어나거나 화면을 다시 그려도 남게 한다
-    else if ('note' in e.target.dataset) setCheckin(shownDay, { note: e.target.value.trim() }, { quiet: true });
+    else if ('note' in e.target.dataset) setCheckin(pickedDay(), { note: e.target.value.trim() }, { quiet: true });
   },
   change(e) {
     const el = e.target;
     if (el.dataset.sleep) {
       // 시간 입력칸은 값을 고치는 도중에도 change가 불려서, 전체를 다시 그리지 않고 필요한 곳만 고친다
-      setSleep(shownDay, { [el.dataset.sleep]: el.value }, { quiet: true });
+      setSleep(pickedDay(), { [el.dataset.sleep]: el.value }, { quiet: true });
       const state = getState();
-      const night = state.sleep[shownDay];
+      const night = state.sleep[pickedDay()];
       const hours = sleepHours(night.bed, night.wake);
       document.querySelector('[data-sleep-total]').textContent = hours != null ? fmtHours(hours) : '–';
-      document.querySelector('[data-slot="burnout"]').innerHTML = burnoutCard(state, shownDay);
+      document.querySelector('[data-slot="load"]').innerHTML = loadCard(state, insight(state, shownDay));
       document.querySelector('[data-slot="week"]').innerHTML = weekCard(state, activeAreas(state), shownDay);
     } else if ('note' in el.dataset) savedToast('메모를 저장했어요');
   },

@@ -98,7 +98,7 @@ export function render(state) {
       ${tile('총 활동', fmtHM(total))}
       ${tile('하루 평균', fmtHM(total / range))}
       ${tile('평균 수면', sleepAvg == null ? '–' : fmtHours(sleepAvg))}
-      ${tile('기록한 날', `${activeDays}<small>/ ${range}일</small>`)}
+      ${tile('활동한 날', `${activeDays}<small>/ ${range}일</small>`)}
     </div>
     <section class="card">
       <h2>일별 활동 시간</h2>

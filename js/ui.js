@@ -1,4 +1,4 @@
-// 여러 화면이 함께 쓰는 UI 조각: 다시 그리기, 토스트, 툴팁, 상태 배지, 기록 목록
+// 여러 화면이 함께 쓰는 UI 조각: 다시 그리기, 토스트, 툴팁, 평점 버튼, 기록 목록
 import { getTip } from './charts.js';
 import { hasSaveFailed } from './store.js';
 import { esc, fmtHM } from './util.js';
@@ -12,14 +12,16 @@ export const refresh = (opts) => refresher(opts);
 
 export const areaColor = (area) => `var(--s${area?.color ?? 0})`;
 
-// 상태 색은 늘 아이콘+글자와 함께 쓴다 (색만으로 의미를 전달하지 않기)
-const STATUS_ICONS = {
-  good: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M4.8 8.3l2.1 2.1 4.3-4.6" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  warning: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.2l7.2 13.2H.8z" fill="currentColor"/><path d="M8 6v3.8M8 12.2v.01" stroke="#0b0b0b" stroke-width="1.8" stroke-linecap="round"/></svg>',
-  serious: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.2l7.2 13.2H.8z" fill="currentColor"/><path d="M8 6v3.8M8 12.2v.01" stroke="#0b0b0b" stroke-width="1.8" stroke-linecap="round"/></svg>',
-  critical: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.1 1h5.8L15 5.1v5.8L10.9 15H5.1L1 10.9V5.1z" fill="currentColor"/><path d="M8 4.6v4.2M8 11.4v.01" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>',
-};
-export const statusBadge = (level) => `<span class="badge badge-${level.key}">${STATUS_ICONS[level.key]}${level.label}</span>`;
+/** 1~5점 버튼 묶음. { field, label, low, high }, 지금 값, 눌렀을 때의 data-action */
+export function ratingScale({ field, label, low, high }, value, action) {
+  const buttons = [1, 2, 3, 4, 5]
+    .map((n) => `<button type="button" class="seg-btn" data-action="${action}" data-field="${field}" data-value="${n}" aria-pressed="${value === n}" aria-label="${label} ${n}점">${n}</button>`)
+    .join('');
+  return `<div class="scale">
+    <div class="scale-head"><span class="scale-label">${label}</span><span class="scale-hint">1 ${low} · 5 ${high}</span></div>
+    <div class="seg" role="group" aria-label="${label}">${buttons}</div>
+  </div>`;
+}
 
 const X_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 

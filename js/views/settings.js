@@ -1,5 +1,5 @@
 // 설정 화면: 활동 영역·주간 목표, 수면 목표, 테마, 백업
-import { addArea, areaById, canAddArea, canRead, createDefaultState, getState, isBackup, MAX_AREAS, normalize, removeArea, replaceState, resetState, setSleepGoal, setTheme, updateArea } from '../store.js';
+import { addArea, areaById, canAddArea, canRead, createDefaultState, getState, isBackup, MAX_AREAS, normalize, removeArea, replaceState, resetState, setProfile, setSleepGoal, setTheme, updateArea } from '../store.js';
 import { exportData } from '../backup.js';
 import { buildSample } from '../sample.js';
 import { installState, promptInstall } from '../pwa.js';
@@ -11,6 +11,17 @@ const THEMES = [
   ['system', '시스템'],
   ['light', '라이트'],
   ['dark', '다크'],
+];
+
+const ROLES = [
+  ['worker', '일'],
+  ['student', '공부'],
+  ['other', '그 외'],
+];
+const AGES = [
+  ['u18', '18세 미만'],
+  ['adult', '18~64세'],
+  ['senior', '65세 이상'],
 ];
 
 const kindOptions = (kind) =>
@@ -71,6 +82,23 @@ function installBody() {
   }
 }
 
+function profileCard({ role, age, hide }) {
+  const choice = (field, list, value) =>
+    list.map(([v, label]) => `<button type="button" class="seg-btn" data-action="profile" data-field="${field}" data-value="${v}" aria-pressed="${value === v}">${label}</button>`).join('');
+  return `<section class="card">
+    <h2>나에게 맞추기</h2>
+    <p class="sub">부하와 회복을 계산할 때 어떤 기본값에서 시작할지 정해요. 기록이 쌓이면 내 값으로 옮겨가요.</p>
+    <div class="stack">
+      <div><div class="scale-head"><span class="scale-label">주로 하는 일</span></div><div class="seg" role="group" aria-label="주로 하는 일">${choice('role', ROLES, role)}</div></div>
+      <div><div class="scale-head"><span class="scale-label">나이</span></div><div class="seg" role="group" aria-label="나이">${choice('age', AGES, age)}</div></div>
+      <div class="hidden-row">
+        <span class="grow">쌓인 부하 추정 숨기기<small class="block">기록은 그대로 쌓이고, 추정만 안 보여요.</small></span>
+        <button type="button" class="btn small" data-action="hide-estimate" aria-pressed="${hide}">${hide ? '다시 보기' : '숨기기'}</button>
+      </div>
+    </div>
+  </section>`;
+}
+
 export function render(state) {
   const active = state.areas.filter((a) => !a.archived);
   const hidden = state.areas.filter((a) => a.archived);
@@ -87,14 +115,15 @@ export function render(state) {
     </section>
     <section class="card">
       <h2>활동 영역과 주간 목표</h2>
-      <p class="sub"><b>부하</b>는 공부·일처럼 에너지를 쓰는 활동, <b>회복</b>은 운동·산책처럼 에너지를 채우는 활동이에요. 번아웃 지수를 계산할 때 쓰여요.</p>
+      <p class="sub"><b>부하</b>는 공부·일처럼 에너지를 쓰는 활동, <b>회복</b>은 운동·산책처럼 에너지를 채우는 활동이에요. 부하와 회복을 계산할 때 쓰여요.</p>
       ${active.map(areaRow).join('')}
       ${canAddArea(state) ? addForm() : limit}
       ${hidden.length ? `<h3 class="mini-title">숨긴 영역</h3>${hidden.map((a) => hiddenRow(a, state)).join('')}` : ''}
     </section>
+    ${profileCard(state.profile)}
     <section class="card">
       <h2>수면 목표</h2>
-      <p class="sub">번아웃 지수와 수면 차트의 기준이에요.</p>
+      <p class="sub">수면 차트의 기준이에요. 권장량보다 높게 잡으면 필요한 수면의 시작값도 함께 올라가요.</p>
       <label class="suffix-in narrow"><input type="number" data-sleep-goal min="4" max="12" step="0.5" value="${state.sleepGoal}" aria-label="하루 수면 목표"><span>시간/일</span></label>
     </section>
     <section class="card">
@@ -146,13 +175,13 @@ async function importData() {
 function hasUserData() {
   const s = getState();
   const base = createDefaultState();
-  return s.entries.length > 0 || Object.keys(s.checkins).length > 0 || Object.keys(s.sleep).length > 0 || s.sleepGoal !== base.sleepGoal || JSON.stringify(s.areas) !== JSON.stringify(base.areas);
+  return s.entries.length > 0 || Object.keys(s.checkins).length > 0 || Object.keys(s.sleep).length > 0 || s.marks.length > 0 || Object.keys(s.weekly).length > 0 || s.sleepGoal !== base.sleepGoal || JSON.stringify(s.areas) !== JSON.stringify(base.areas);
 }
 
 async function loadSample() {
   if (hasUserData() && !(await ask('지금 기록과 영역 설정을 샘플 데이터로 바꿀까요? 기존 내용은 사라져요.', '바꾸기'))) return;
   replaceState(buildSample());
-  savedToast('4주치 샘플 데이터를 넣었어요');
+  savedToast('114주치 샘플 데이터를 넣었어요');
   location.hash = '#/today';
 }
 
@@ -184,6 +213,8 @@ export const on = {
         savedToast('삭제했어요');
       }
     } else if (action === 'theme') setTheme(value);
+    else if (action === 'profile') setProfile({ [button.dataset.field]: value });
+    else if (action === 'hide-estimate') setProfile({ hide: !getState().profile.hide });
     else if (action === 'install') {
       if (await promptInstall()) toast('설치했어요. 홈 화면에서 열어보세요.');
     } else if (action === 'export') exportData();

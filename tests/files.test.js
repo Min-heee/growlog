@@ -14,6 +14,6 @@ test('FILES에 있는 파일은 모두 존재한다', () => {
 });
 
 test('앱이 쓰는 파일은 모두 FILES에 있다', () => {
-  const used = [...walk('js/'), ...walk('css/'), ...walk('icons/')].filter((f) => !f.endsWith('strain.js'));
+  const used = [...walk('js/'), ...walk('css/'), ...walk('icons/')];
   assert.deepEqual(used.filter((f) => !listed.includes(f)), []);
 });

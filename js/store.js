@@ -4,6 +4,9 @@ import { uid } from './util.js';
 
 const KEY = 'growlog:v1';
 export const MAX_AREAS = 6; // 색 1~6번은 활동 영역, 7번은 수면에 고정
+export const MARK_TAGS = ['일', '공부', '관계', '건강', '기타'];
+const ROLES = ['worker', 'student', 'other'];
+const AGES = ['adult', 'u18', 'senior'];
 
 const DEFAULT_AREAS = [
   { id: 'exercise', label: '운동', emoji: '🏃', goal: 150, kind: 'recovery', color: 1 },
@@ -17,7 +20,11 @@ export function createDefaultState() {
     areas: DEFAULT_AREAS.map((a) => ({ ...a, archived: false })),
     entries: [], // { id, date, areaId, minutes, title, source: 'manual'|'timer', createdAt }
     sleep: {}, // 일어난 날짜 → { bed, wake, quality }
-    checkins: {}, // 날짜 → { energy, stress, mood, note }
+    checkins: {}, // 날짜 → { energy, stress, mood, detach, note }
+    marks: [], // 지친 날 { id, date, sev, fuzz, tag, closedOn, createdAt } 또는 새 평소 { id, date, rebase, closedOn, createdAt }
+    weekly: {}, // 그 주의 월요일 → { built, distance, done, on }
+    profile: { role: 'other', age: 'adult', hide: false },
+    supportSeen: 0, // 도움 안내를 마지막으로 닫은 시각
     sleepGoal: 7,
     theme: 'system',
     sample: false,
@@ -81,6 +88,25 @@ function cleanEntry(e) {
   };
 }
 
+function cleanMark(m) {
+  if (!isMap(m) || !isDate(m.date)) return null;
+  const base = {
+    id: typeof m.id === 'string' && m.id ? m.id : uid(),
+    date: m.date,
+    closedOn: isDate(m.closedOn) ? m.closedOn : undefined,
+    createdAt: number(m.createdAt, 0, Number.MAX_SAFE_INTEGER) ?? fromKey(m.date).getTime(),
+  };
+  if (m.rebase === true) return compact({ ...base, rebase: true });
+  if (![1, 2, 3].includes(m.sev)) return null;
+  return compact({ ...base, sev: m.sev, fuzz: [3, 7].includes(m.fuzz) ? m.fuzz : 0, tag: MARK_TAGS.includes(m.tag) ? m.tag : undefined });
+}
+
+const cleanProfile = (p) => ({
+  role: ROLES.includes(p?.role) ? p.role : 'other',
+  age: AGES.includes(p?.age) ? p.age : 'adult',
+  hide: p?.hide === true,
+});
+
 function cleanByDate(map, clean) {
   if (!isMap(map)) return {};
   return Object.fromEntries(
@@ -99,7 +125,11 @@ export function normalize(data) {
     areas: Array.isArray(data.areas) ? cleanAreas(data.areas) : base.areas,
     entries: Array.isArray(data.entries) ? data.entries.map(cleanEntry).filter(Boolean) : [],
     sleep: cleanByDate(data.sleep, (n) => ({ bed: clock(n.bed), wake: clock(n.wake), quality: rating(n.quality) })),
-    checkins: cleanByDate(data.checkins, (c) => ({ energy: rating(c.energy), stress: rating(c.stress), mood: rating(c.mood), note: text(c.note, 200) })),
+    checkins: cleanByDate(data.checkins, (c) => ({ energy: rating(c.energy), stress: rating(c.stress), mood: rating(c.mood), detach: rating(c.detach), note: text(c.note, 200) })),
+    marks: Array.isArray(data.marks) ? data.marks.map(cleanMark).filter(Boolean) : [],
+    weekly: cleanByDate(data.weekly, (w) => ({ built: rating(w.built), distance: rating(w.distance), done: rating(w.done), on: isDate(w.on) ? w.on : undefined })),
+    profile: cleanProfile(data.profile),
+    supportSeen: number(data.supportSeen, 0, Number.MAX_SAFE_INTEGER) ?? 0,
     sleepGoal: number(data.sleepGoal, 4, 12) ?? base.sleepGoal,
     theme: ['light', 'dark'].includes(data.theme) ? data.theme : 'system',
     sample: data.sample === true,
@@ -234,6 +264,42 @@ export const setSleep = (date, patch, opts) =>
   commit((s) => {
     s.sleep[date] = { ...s.sleep[date], ...patch };
   }, opts);
+
+// ---- 지친 날·돌아보기 ----
+export function addMark({ date, sev, fuzz, tag, closedOn }) {
+  const mark = compact({ id: uid(), date, sev, fuzz, tag, closedOn, createdAt: Date.now() });
+  commit((s) => void s.marks.push({ ...mark }));
+}
+export const restoreMarks = (marks) => commit((s) => void s.marks.push(...marks));
+export const deleteMarks = (ids) =>
+  commit((s) => {
+    s.marks = s.marks.filter((m) => !ids.includes(m.id));
+  });
+export const closeMarks = (ids, date) =>
+  commit((s) => {
+    for (const mark of s.marks) if (ids.includes(mark.id) && !mark.closedOn) mark.closedOn = date;
+  });
+export const reopenMarks = (ids) =>
+  commit((s) => {
+    for (const mark of s.marks) if (ids.includes(mark.id)) delete mark.closedOn;
+  });
+/** 요즘을 새로운 평소로 삼는다. 이튿날부터 평소를 새로 계산한다. */
+export function addRebase(date) {
+  const mark = { id: uid(), date, rebase: true, closedOn: date, createdAt: Date.now() };
+  commit((s) => void s.marks.push({ ...mark }));
+}
+export const setWeekly = (week, patch) =>
+  commit((s) => {
+    s.weekly[week] = { ...s.weekly[week], ...patch };
+  });
+export const setProfile = (patch, opts) =>
+  commit((s) => {
+    s.profile = { ...s.profile, ...patch };
+  }, opts);
+export const setSupportSeen = () =>
+  commit((s) => {
+    s.supportSeen = Date.now();
+  });
 
 // ---- 활동 영역 ----
 export const canAddArea = (s = state) => s.areas.length < MAX_AREAS;
