@@ -1,6 +1,6 @@
 // 앱 데이터 저장소: 브라우저 localStorage에 저장하고, 바뀌면 구독한 화면에 알린다.
 import { fromKey } from './dates.js';
-import { uid } from './util.js';
+import { sendToApp, uid } from './util.js';
 
 const KEY = 'growlog:v1';
 export const MAX_AREAS = 6; // 색 1~6번은 활동 영역, 7번은 수면에 고정
@@ -204,6 +204,7 @@ function sync() {
   try {
     const json = JSON.stringify(state);
     localStorage.setItem(KEY, json);
+    sendToApp({ save: json }); // 아이폰 앱은 OS가 웹 저장소를 비워도 되살리도록 파일로도 남긴다
     lastGood = json;
     pending = [];
     saveFailed = false;

@@ -2,6 +2,7 @@
 import { getState } from './store.js';
 import { todayKey } from './dates.js';
 import { toast } from './ui.js';
+import { sendToApp } from './util.js';
 
 function download(file) {
   const url = URL.createObjectURL(file);
@@ -14,7 +15,10 @@ function download(file) {
 }
 
 export async function exportData() {
-  const file = new File([JSON.stringify(getState(), null, 2)], `growlog-backup-${todayKey()}.json`, { type: 'application/json' });
+  const name = `growlog-backup-${todayKey()}.json`;
+  const text = JSON.stringify(getState(), null, 2);
+  if (sendToApp({ share: { name, text } })) return; // 아이폰 앱 안에서는 내려받기가 없어 앱이 공유 창을 연다
+  const file = new File([text], name, { type: 'application/json' });
   // 폰에서는 공유 창으로 파일 앱이나 메신저에 바로 보낼 수 있게 한다
   if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) {
     try {

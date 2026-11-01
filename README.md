@@ -31,6 +31,19 @@ python3 -m http.server 5180
 - 파일을 추가하거나 지웠다면 `sw.js`의 `FILES` 목록도 고쳐주세요. 빠뜨린 파일은 오프라인에서 열리지 않고, 지운 파일이 목록에 남으면 새 버전을 받지 못해요. `node --test tests/`가 이 목록을 검사해요.
 - 개발 중에는 같은 이유로 고친 내용이 다음 새로고침에 보여요. 바로 보려면 브라우저 개발자 도구의 Application → Service workers에서 Update on reload를 켜주세요.
 
+## 아이폰 앱으로 빌드하기
+
+`ios/` 폴더는 같은 웹 앱을 앱 안에 넣어 WKWebView로 여는 아이폰 앱이에요. 웹 파일을 따로 복사해두지 않고, 빌드할 때 앱 안으로 넣어요.
+
+```bash
+cd ios && xcodegen generate && open GrowLog.xcodeproj
+```
+
+- 기록은 웹 저장소에 저장하고, 같은 내용을 앱의 Documents 폴더에 `growlog.json`으로도 남겨요. 웹 저장소가 비어 있으면 앱을 열 때 이 파일로 되살려요.
+- 앱을 지우면 기록도 함께 지워져요. 먼저 설정의 내보내기로 백업해주세요. Safari나 홈 화면 앱에 있던 기록도 내보내기와 가져오기로 옮겨요.
+- 웹 코드를 고쳐도 앱은 다시 빌드해서 올려야 바뀌어요. GitHub Pages에 올린다고 앱이 바뀌지는 않아요.
+- TestFlight에 올릴 때는 `scripts/ios_release.sh`를 실행해요. `ios/release.env`에 App Store Connect API의 `ASC_KEY_ID`와 `ASC_ISSUER_ID`가 있어야 하고, 이 파일은 git에 올리지 않아요.
+
 ## 화면
 
 | 화면 | 하는 일 |

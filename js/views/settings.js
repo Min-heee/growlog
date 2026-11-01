@@ -5,7 +5,7 @@ import { buildSample } from '../sample.js';
 import { installState, promptInstall } from '../pwa.js';
 import { resetSleepForm } from './today.js';
 import { resetTimer } from './timer.js';
-import { clamp, esc } from '../util.js';
+import { clamp, esc, isNativeApp } from '../util.js';
 import { areaColor, ask, fieldSavedToast, fieldToast, refresh, savedToast, toast } from '../ui.js';
 
 const THEMES = [
@@ -135,7 +135,7 @@ export function render(state) {
     </section>
     <section class="card">
       <h2>데이터</h2>
-      <p class="sub">모든 기록은 이 브라우저에만 저장돼요. 브라우저 데이터를 지우거나 기기를 바꾸기 전에 내보내기로 백업해두세요.</p>
+      <p class="sub">${isNativeApp() ? '모든 기록은 이 아이폰에만 저장돼요. 앱을 지우면 기록도 함께 지워지니, 앱을 지우거나 기기를 바꾸기 전에 내보내기로 백업해두세요.' : '모든 기록은 이 브라우저에만 저장돼요. 브라우저 데이터를 지우거나 기기를 바꾸기 전에 내보내기로 백업해두세요.'}</p>
       <div class="btn-row data-actions">
         <button type="button" class="btn" data-action="export">내보내기</button>
         <label class="btn" for="import-file" role="button" tabindex="0" data-action="import">가져오기</label>

@@ -187,3 +187,18 @@ test('기록만 비울 때는 고른 테마를 남기고, 모두 지우면 기�
   store.resetState();
   assert.equal(store.getState().theme, 'dark');
 });
+
+test('아이폰 앱 안에서는 저장한 내용을 앱에도 그대로 보낸다', async () => {
+  const sent = [];
+  globalThis.webkit = { messageHandlers: { growlog: { postMessage: (message) => sent.push(message) } } };
+  const { store, disk } = await boot(seeded());
+  add(store, 15);
+  delete globalThis.webkit;
+  assert.deepEqual(JSON.parse(sent.at(-1).save), disk());
+});
+
+test('브라우저에서는 앱으로 보내는 일 없이 저장한다', async () => {
+  const { store, disk } = await boot(seeded());
+  add(store, 15);
+  assert.equal(disk().entries.length, 2);
+});

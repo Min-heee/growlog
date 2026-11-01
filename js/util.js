@@ -1,3 +1,12 @@
+// 아이폰 앱으로 감싸서 실행할 때 Swift 쪽과 이야기하는 통로. 브라우저에서는 없다.
+const appBridge = () => globalThis.webkit?.messageHandlers?.growlog ?? null;
+export const isNativeApp = () => appBridge() !== null;
+/** 아이폰 앱 안이면 메시지를 보내고 true, 아니면 false */
+export function sendToApp(message) {
+  appBridge()?.postMessage(message);
+  return isNativeApp();
+}
+
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 export const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
 export const sum = (list, fn = (x) => x) => list.reduce((acc, x) => acc + fn(x), 0);

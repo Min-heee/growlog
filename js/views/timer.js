@@ -1,7 +1,7 @@
 // 집중 타이머: 포모도로·스톱워치. 시작 시각을 저장해두어 새로고침하거나 다른 화면으로 가도 이어진다.
 import { activeAreas, addEntry, areaById, getState } from '../store.js';
 import { toKey, todayKey } from '../dates.js';
-import { esc, fmtHM, sum } from '../util.js';
+import { esc, fmtHM, isNativeApp, sendToApp, sum } from '../util.js';
 import { areaColor, entryList, refresh, savedToast, toast } from '../ui.js';
 
 const KEY = 'growlog:timer';
@@ -112,6 +112,7 @@ function unlockAudio() {
 }
 function chime() {
   navigator.vibrate?.([180, 80, 180]);
+  sendToApp({ buzz: true }); // 아이폰은 무음 모드면 소리가 안 나니 진동으로도 알린다
   if (!audio) return;
   audio.resume();
   const now = audio.currentTime;
@@ -134,8 +135,13 @@ function chime() {
 let wakeLock = null;
 let wakePending = false; // 요청은 한 번에 하나만. 겹치면 놓지 못하는 잠금이 남는다.
 let wakeRefused = false; // 거부됐다면 사용자가 다시 누르거나 앱으로 돌아올 때까지 묻지 않는다
+let appAwake = null; // 아이폰 앱에 화면을 켜두라고 말해둔 상태. 페이지를 다시 열면 모르니 처음 한 번은 꼭 알린다.
 
 async function syncWakeLock() {
+  if (isNativeApp()) {
+    if (appAwake !== ticking()) sendToApp({ keepAwake: (appAwake = ticking()) });
+    return;
+  }
   if (!navigator.wakeLock) return;
   if (!ticking()) {
     wakeLock?.release();

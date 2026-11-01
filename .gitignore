@@ -1,2 +1,6 @@
 .claude/
 .DS_Store
+ios/GrowLog.xcodeproj/
+ios/GrowLog/Info.plist
+ios/build/
+ios/release.env

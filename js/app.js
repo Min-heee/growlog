@@ -5,6 +5,7 @@ import { resetTips } from './charts.js';
 import { todayKey } from './dates.js';
 import { initPWA } from './pwa.js';
 import { initTooltips, savedToast, setRefresher } from './ui.js';
+import { isNativeApp, sendToApp } from './util.js';
 import * as today from './views/today.js';
 import * as timer from './views/timer.js';
 import * as stats from './views/stats.js';
@@ -15,6 +16,7 @@ import * as help from './views/help.js';
 const views = { today, timer, stats, recovery, settings, help };
 const ALIASES = { burnout: 'recovery' }; // 설치된 앱의 옛 바로가기
 const root = document.getElementById('view');
+document.documentElement.classList.toggle('native', isNativeApp());
 
 function routeName() {
   const hash = location.hash.replace(/^#\/?/, '');
@@ -51,6 +53,7 @@ function applyTheme(theme) {
   document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
     meta.content = page;
   });
+  sendToApp({ theme }); // 아이폰 앱의 키보드와 시간 선택창도 고른 테마를 따른다
 }
 
 let renderedDay = todayKey();

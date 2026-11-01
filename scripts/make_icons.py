@@ -8,7 +8,9 @@ import struct
 import zlib
 from pathlib import Path
 
-OUT = Path(__file__).resolve().parent.parent / 'icons'
+ROOT = Path(__file__).resolve().parent.parent
+OUT = ROOT / 'icons'
+IOS_ICON = ROOT / 'ios/GrowLog/Assets.xcassets/AppIcon.appiconset/icon-1024.png'
 BACKGROUND = (10, 11, 13)
 SPROUT = (198, 255, 61)
 SAMPLES = 3  # 픽셀당 가로·세로 표본 수 (가장자리를 부드럽게)
@@ -69,10 +71,12 @@ def chunk(tag, data):
     return struct.pack('>I', len(data)) + tag + data + struct.pack('>I', zlib.crc32(tag + data))
 
 
-def write_png(path, size, rgba):
-    stride = size * 4
+def write_png(path, size, rgba, opaque=False):
+    if opaque:  # 앱스토어는 알파 채널이 있는 아이콘을 받지 않는다
+        del rgba[3::4]
+    stride = size * (3 if opaque else 4)
     raw = b''.join(b'\0' + bytes(rgba[y * stride : (y + 1) * stride]) for y in range(size))
-    header = struct.pack('>IIBBBBB', size, size, 8, 6, 0, 0, 0)
+    header = struct.pack('>IIBBBBB', size, size, 8, 2 if opaque else 6, 0, 0, 0)
     path.write_bytes(b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', header) + chunk(b'IDAT', zlib.compress(raw, 9)) + chunk(b'IEND', b''))
     print(f'{path.name}: {path.stat().st_size / 1024:.1f} KB')
 
@@ -101,6 +105,7 @@ def main():
         sprout = coverage(size, in_sprout)
         for name, rounded in files:
             write_png(OUT / name, size, render(size, sprout, rounded))
+    write_png(IOS_ICON, 1024, render(1024, coverage(1024, in_sprout), False), opaque=True)
 
 
 if __name__ == '__main__':

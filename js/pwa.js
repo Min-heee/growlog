@@ -1,10 +1,11 @@
 // 앱 설치와 오프라인 실행: 서비스 워커 등록, 설치 안내, 저장 공간 보호
 import { refresh, toast } from './ui.js';
+import { isNativeApp } from './util.js';
 
 let installPrompt = null;
 let justInstalled = false;
 
-export const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+export const isStandalone = () => isNativeApp() || matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
 // iPadOS는 데스크톱 Safari처럼 자신을 알리므로 터치 지점 수로 구분한다
 export const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
