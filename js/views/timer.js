@@ -10,7 +10,7 @@ const PRESETS = [
   { min: 50, label: '50분', rest: 10 },
   { min: 0, label: '스톱워치', rest: 5 },
 ];
-const RING = 2 * Math.PI * 108;
+const DIAL = 150; // 다이얼의 눈금 수
 const MAX_BANKED = 3650 * 864e5; // 저장된 값이 깨졌을 때 날짜 계산이 무너지지 않게 막는 선
 
 // phase: idle(대기) | running(집중) | paused(일시정지) | break(휴식)
@@ -88,6 +88,17 @@ function clock(ms) {
   return h ? `${h}:${m}:${s}` : `${m}:${s}`;
 }
 
+// 눈금 150개를 요소로 두지 않고 선 하나로 그려서, 눈금이 늘어날 때 d만 바꾼다
+function spoke(i, inner, outer = 172) {
+  const angle = (i / DIAL) * 2 * Math.PI;
+  const at = (r) => `${(175 + Math.sin(angle) * r).toFixed(1)} ${(175 - Math.cos(angle) * r).toFixed(1)}`;
+  return `M${at(outer)}L${at(inner)}`;
+}
+const TICKS = Array.from({ length: DIAL }, (_, i) => spoke(i, i % 30 ? 159 : 149)); // 5칸마다 긴 눈금
+const litTicks = () => Math.round(progress() * DIAL);
+const litPath = () => TICKS.slice(0, litTicks()).join('');
+const needlePath = () => (t.phase === 'idle' ? '' : spoke(litTicks(), 142, 174));
+
 // ---- 알림음 ----
 let audio = null;
 function unlockAudio() {
@@ -163,13 +174,22 @@ document.addEventListener('click', () => {
 });
 
 // ---- 진행 ----
+const isLongClock = (text) => text.length > 7; // 스톱워치가 10시간을 넘긴 경우
+
 function paint() {
   syncWakeLock();
   const time = document.querySelector('[data-timer-time]');
-  if (time) time.textContent = clock(displayMs());
-  const ring = document.querySelector('[data-timer-ring]');
-  if (ring) ring.style.strokeDashoffset = String(RING * (1 - progress()));
-  document.title = ticking() ? `${clock(displayMs())} · ${t.phase === 'break' ? '휴식' : '집중'} | 그로우로그` : '그로우로그';
+  if (time) {
+    time.textContent = clock(displayMs());
+    time.classList.toggle('long', isLongClock(time.textContent));
+  }
+  const lit = document.querySelector('[data-dial-lit]');
+  if (lit && lit.dataset.count !== String(litTicks())) {
+    lit.dataset.count = litTicks();
+    lit.setAttribute('d', litPath());
+    document.querySelector('[data-dial-needle]').setAttribute('d', needlePath());
+  }
+  document.title =ticking() ? `${clock(displayMs())} · ${t.phase === 'break' ? '휴식' : '집중'} | 그로우로그` : '그로우로그';
 }
 
 const idle = (patch = {}) => ({ ...t, phase: 'idle', startedAt: 0, banked: 0, finished: false, ...patch });
@@ -350,23 +370,44 @@ function act(action, value) {
 // ---- 화면 ----
 function heading(area) {
   if (t.phase === 'break') return '잠깐 쉬어가요';
-  if (t.phase === 'running') return `${esc(area?.label ?? '')} 집중 중`;
+  if (t.phase === 'running') return t.title.trim() || `${area?.label ?? ''} 집중 중`;
   if (t.phase === 'paused') return '잠시 멈췄어요';
   return t.finished ? '한 세션 끝! 잘했어요' : '집중할 준비 됐나요?';
 }
-function phaseLabel(area) {
+function phaseLabel() {
   if (t.phase === 'break') return `휴식 ${preset().rest}분`;
-  if (t.phase !== 'idle') return area ? `${esc(area.emoji)} ${esc(area.label)}` : '';
+  if (t.phase !== 'idle') return t.preset ? `${t.preset}분 세션` : '스톱워치';
   return t.preset ? `${t.preset}분 집중` : '스톱워치';
 }
-function actions(area) {
-  const button = (action, label, kind = '') => `<button type="button" class="btn ${kind}" data-action="${action}">${label}</button>`;
-  if (t.phase === 'running') return button('pause', '일시정지', 'primary') + button('finish', '끝내고 기록') + button('reset', '초기화', 'ghost');
-  if (t.phase === 'paused') return button('resume', '계속하기', 'primary') + button('finish', '끝내고 기록') + button('reset', '초기화', 'ghost');
-  if (t.phase === 'break') return button('skip-break', '휴식 건너뛰기', 'primary');
-  if (t.finished) return button('break', `${preset().rest}분 휴식`, 'primary') + (area ? button('start', '바로 다음 세션') : '');
-  return area ? button('start', '시작', 'primary') : '<a class="btn" href="#/settings">영역을 먼저 추가해주세요</a>';
+
+const ICONS = {
+  finish: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  pause: '<path d="M9 5.5v13M15 5.5v13"/>',
+  resume: '<path d="M8 5.5l10 6.5-10 6.5z"/>',
+  reset: '<path d="M4.5 12a7.5 7.5 0 1 0 2.4-5.5"/><path d="M4.5 4.5v4h4"/>',
+  rest: '<path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5z"/>',
+};
+const icon = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
+
+function actions(area, sessions) {
+  const tile = (action, label, kind, name) => `<button type="button" class="act ${kind}" data-action="${action}"><span class="act-icon">${icon(name)}</span>${label}</button>`;
+  const wide = (action, label) => `<button type="button" class="act primary wide" data-action="${action}">${label}</button>`;
+  const rest = `<div class="act low"><span>오늘의 집중</span><b>${sessions.length}회 · ${fmtHM(sum(sessions, (e) => e.minutes))}</b></div>
+    <button type="button" class="act quiet" data-action="reset">${icon('reset')}초기화</button>`;
+  if (t.phase === 'running') return tile('finish', '끝내고 기록', 'primary', 'finish') + tile('pause', '일시정지', '', 'pause') + rest;
+  if (t.phase === 'paused') return tile('resume', '계속하기', 'primary', 'resume') + tile('finish', '끝내고 기록', '', 'finish') + rest;
+  if (t.phase === 'break') return wide('skip-break', '휴식 건너뛰기');
+  if (t.finished) return area ? tile('break', `${preset().rest}분 휴식`, 'primary', 'rest') + tile('start', '다음 세션', '', 'resume') : wide('break', `${preset().rest}분 휴식`);
+  return area ? wide('start', '시작') : '<a class="act wide" href="#/settings">영역을 먼저 추가해주세요</a>';
 }
+
+export function label(state) {
+  const area = areaById(t.areaId, state);
+  if (t.phase === 'running') return `${area?.label ?? ''} 집중 중`;
+  if (t.phase === 'paused') return `${area?.label ?? ''} 일시정지`;
+  return t.phase === 'break' ? '휴식 중' : '집중 타이머';
+}
+export const live = () => t.phase === 'running';
 
 export function render(state) {
   const areas = activeAreas(state);
@@ -374,31 +415,27 @@ export function render(state) {
   const area = areaById(t.areaId, state);
   const today = todayKey();
   const sessions = state.entries.filter((e) => e.date === today && e.source === 'timer').sort((a, b) => b.createdAt - a.createdAt);
-  const ringColor = t.phase === 'break' ? 'var(--ink-2)' : areaColor(area);
-  const presets = PRESETS.map((p) => `<button type="button" class="seg-btn" data-action="preset" data-value="${p.min}" aria-pressed="${t.preset === p.min}" ${t.phase === 'idle' ? '' : 'disabled'}>${p.label}</button>`).join('');
+  const presets = PRESETS.map((p) => `<button type="button" class="seg-btn" data-action="preset" data-value="${p.min}" aria-pressed="${t.preset === p.min}">${p.label}</button>`).join('');
+  const time = clock(displayMs());
   const chips = areas
-    .map((a) => `<button type="button" class="chip" data-action="timer-area" data-id="${esc(a.id)}" aria-pressed="${a.id === t.areaId}"><span class="dot" style="background:${areaColor(a)}"></span>${esc(a.emoji)} ${esc(a.label)}</button>`)
+    .map((a) => `<button type="button" class="chip" data-action="timer-area" data-id="${esc(a.id)}" aria-pressed="${a.id === t.areaId}"><span class="dot" style="background:${areaColor(a)}"></span>${esc(a.label)}</button>`)
     .join('');
   return `
-    <header class="page-head">
-      <p class="eyebrow">집중 타이머</p>
-      <h1>${heading(area)}</h1>
-    </header>
-    <section class="card">
-      <div class="seg" role="group" aria-label="타이머 종류">${presets}</div>
-      <div class="timer-face">
-        <svg viewBox="0 0 240 240" aria-hidden="true">
-          <circle class="track" cx="120" cy="120" r="108" fill="none" stroke-width="10"/>
-          <circle class="prog" data-timer-ring cx="120" cy="120" r="108" fill="none" stroke-width="10" style="stroke:${ringColor};stroke-dasharray:${RING};stroke-dashoffset:${RING * (1 - progress())}"/>
-        </svg>
-        <div class="timer-center">
-          <div class="timer-time" data-timer-time>${clock(displayMs())}</div>
-          <div class="timer-phase">${phaseLabel(area)}</div>
-        </div>
+    <h1 class="timer-title" data-timer-heading>${esc(heading(area))}</h1>
+    <div class="timer-presets">${t.phase === 'idle' ? `<div class="seg" role="group" aria-label="타이머 종류">${presets}</div>` : ''}</div>
+    <div class="dial${t.phase === 'break' ? ' resting' : ''}">
+      <svg viewBox="0 0 350 350" aria-hidden="true">
+        <path class="ticks-off" d="${TICKS.join('')}"/>
+        <path class="ticks-on" data-dial-lit data-count="${litTicks()}" d="${litPath()}"/>
+        <path class="needle" data-dial-needle d="${needlePath()}"/>
+      </svg>
+      <div class="dial-core">
+        <div class="timer-time${isLongClock(time) ? ' long' : ''}" data-timer-time>${time}</div>
+        <div class="timer-phase">${phaseLabel()}</div>
       </div>
-      <div class="timer-actions">${actions(area)}</div>
-      <p class="hint timer-note">화면이 꺼지거나 다른 앱으로 가면 알림음이 울리지 않아요. 시간은 그대로 기록돼요.</p>
-    </section>
+    </div>
+    <div class="timer-actions">${actions(area, sessions)}</div>
+    <p class="hint timer-note">화면이 꺼지거나 다른 앱으로 가면 알림음이 울리지 않아요. 시간은 그대로 기록돼요.</p>
     <section class="card">
       <h2>무엇에 집중하나요?</h2>
       <p class="sub">세션이 끝나면 고른 영역에 자동으로 기록돼요.</p>
@@ -422,6 +459,7 @@ export const on = {
     if ('timerTitle' in e.target.dataset) {
       t.title = e.target.value;
       save();
+      document.querySelector('[data-timer-heading]').textContent = heading(areaById(t.areaId));
     }
   },
 };

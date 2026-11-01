@@ -2,7 +2,7 @@
 import { fmtDay, fmtShort, rangeKeys, sleepHours, todayKey, weekday } from '../dates.js';
 import { columns, stackedColumns } from '../charts.js';
 import { avg, esc, fmt1, fmtHM, fmtHours, sum } from '../util.js';
-import { areaColor, entryList, refresh } from '../ui.js';
+import { areaColor, entryList, refresh, tickBar } from '../ui.js';
 
 const RANGE_KEY = 'growlog:range';
 const RANGES = [7, 30];
@@ -73,8 +73,8 @@ export function render(state) {
     .map(({ a, minutes }) => {
       const share = total ? Math.round((minutes / total) * 100) : 0;
       return `<div class="goal">
-        <div class="goal-head"><span class="goal-name"><span class="dot" style="background:${areaColor(a)}"></span>${esc(a.emoji)} ${esc(a.label)}</span><span class="goal-val"><strong>${fmtHM(minutes)}</strong> · ${share}%</span></div>
-        <div class="bar"><span style="width:${share}%;background:${areaColor(a)}"></span></div>
+        <div class="goal-head"><span class="goal-name"><span class="dot" style="background:${areaColor(a)}"></span>${esc(a.label)}</span><span class="goal-val"><strong>${fmtHM(minutes)}</strong> · ${share}%</span></div>
+        ${tickBar(total ? minutes / total : 0)}
       </div>`;
     })
     .join('');
@@ -90,7 +90,6 @@ export function render(state) {
 
   return `
     <header class="page-head">
-      <p class="eyebrow">통계</p>
       <h1>나의 기록</h1>
     </header>
     <div class="filters"><div class="seg inline" role="group" aria-label="기간">${buttons}</div></div>
@@ -124,6 +123,8 @@ export function render(state) {
     </section>`;
 }
 
+export const label = () => '통계';
+
 export function drawCharts(root) {
   const activity = root.querySelector('[data-chart="activity"]');
   if (activity) {
@@ -136,12 +137,12 @@ export function drawCharts(root) {
   const sleep = root.querySelector('[data-chart="sleep"]');
   if (sleep) {
     const points = model.nights.map((n) => {
-      const rows = n.value == null ? [{ label: '수면', value: '기록 없음', color: 'var(--s7)' }] : [{ label: '수면', value: fmtHours(n.value), color: 'var(--s7)' }];
+      const rows = n.value == null ? [{ label: '수면', value: '기록 없음', color: 'var(--ink-2)' }] : [{ label: '수면', value: fmtHours(n.value), color: 'var(--ink-2)' }];
       if (n.night?.bed && n.night?.wake) rows.push({ label: '잠든·일어난 시간', value: `${n.night.bed} → ${n.night.wake}` });
       if (n.night?.quality) rows.push({ label: '수면의 질', value: `${n.night.quality}/5` });
       return { label: n.label, title: n.title, value: n.value, rows };
     });
-    columns(sleep, { points, color: 'var(--s7)', ref: { value: model.sleepGoal, label: `목표 ${fmt1(model.sleepGoal)}h` }, label: '일별 수면 시간' });
+    columns(sleep, { points, color: 'var(--ink-2)', ref: { value: model.sleepGoal, label: `목표 ${fmt1(model.sleepGoal)}h` }, label: '일별 수면 시간' });
   }
 }
 

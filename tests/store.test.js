@@ -178,3 +178,12 @@ test('다른 탭이 영역을 채우면 추가에 실패했다고 알려준다',
   const { store } = await boot(base);
   assert.equal(store.addArea({ label: '하나 더', emoji: '✨', goal: 0, kind: 'load' }), false);
 });
+
+test('기록만 비울 때는 고른 테마를 남기고, 모두 지우면 기본값으로 돌아간다', async () => {
+  const { store } = await boot({ ...seeded(), theme: 'light' });
+  store.resetState({ keepTheme: true });
+  assert.equal(store.getState().theme, 'light');
+  assert.deepEqual(store.getState().entries, []);
+  store.resetState();
+  assert.equal(store.getState().theme, 'dark');
+});

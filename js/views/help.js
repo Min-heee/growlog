@@ -7,11 +7,12 @@ const phone = ({ tel, show, label, hint }) => `<a class="contact" href="tel:${te
   <span class="chev" aria-hidden="true">›</span>
 </a>`;
 
+export const label = () => '도움받을 곳';
+
 export function render(state) {
   const phones = state.profile.age === 'u18' ? [PHONES[0], YOUTH, ...PHONES.slice(1)] : PHONES;
   return `
     <header class="page-head">
-      <p class="eyebrow">도움받을 곳</p>
       <h1>많이 힘들 때</h1>
     </header>
     <section class="card">

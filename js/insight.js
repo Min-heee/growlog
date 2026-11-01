@@ -190,7 +190,11 @@ export function insight(state, today) {
   let pool = hist;
   if (!noUsual) pool = rebuilding ? calm : model.base.length ? model.base : hist;
   const recentDays = lastDays(14).filter(isValid);
-  const recent = { logged: recentDays.length, hard: recentDays.filter(isHard).length };
+  const recent = {
+    logged: recentDays.length,
+    hard: recentDays.filter(isHard).length,
+    days: rangeKeys(today, 14).map((k) => (byDate.has(k) && isValid(byDate.get(k)) ? isHard(byDate.get(k)) : null)), // 기록이 없는 날은 null
+  };
   const need = last?.need ?? model.need0;
   const usualSleep = finite(pool.map((h) => h.tib));
   const usualLoad = finite(pool.map((h) => h.loadMin));

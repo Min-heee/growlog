@@ -26,7 +26,7 @@ export function createDefaultState() {
     profile: { role: 'other', age: 'adult', hide: false },
     supportSeen: 0, // 도움 안내를 마지막으로 닫은 시각
     sleepGoal: 7,
-    theme: 'system',
+    theme: 'dark',
     sample: false,
   };
 }
@@ -131,7 +131,7 @@ export function normalize(data) {
     profile: cleanProfile(data.profile),
     supportSeen: number(data.supportSeen, 0, Number.MAX_SAFE_INTEGER) ?? 0,
     sleepGoal: number(data.sleepGoal, 4, 12) ?? base.sleepGoal,
-    theme: ['light', 'dark'].includes(data.theme) ? data.theme : 'system',
+    theme: ['light', 'auto'].includes(data.theme) ? data.theme : 'dark', // 예전의 'system'은 다크로 옮긴다
     sample: data.sample === true,
   };
 }
@@ -338,4 +338,5 @@ export function replaceState(data) {
   const next = normalize(data);
   commit(() => structuredClone(next));
 }
-export const resetState = () => commit(() => createDefaultState());
+/** keepTheme: 기록만 비우는 경우. 고른 화면 테마까지 몰래 되돌리지 않는다. */
+export const resetState = ({ keepTheme = false } = {}) => commit((s) => ({ ...createDefaultState(), ...(keepTheme && { theme: s.theme }) }));

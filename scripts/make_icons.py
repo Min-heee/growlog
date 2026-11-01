@@ -9,9 +9,8 @@ import zlib
 from pathlib import Path
 
 OUT = Path(__file__).resolve().parent.parent / 'icons'
-TOP = (34, 192, 138)
-BOTTOM = (13, 132, 94)
-SPROUT = (255, 255, 255)
+BACKGROUND = (10, 11, 13)
+SPROUT = (198, 255, 61)
 SAMPLES = 3  # 픽셀당 가로·세로 표본 수 (가장자리를 부드럽게)
 CORNER = 0.22
 
@@ -82,14 +81,12 @@ def render(size, sprout, rounded):
     mask = coverage(size, in_rounded_square) if rounded else None
     rgba = bytearray(size * size * 4)
     for y in range(size):
-        t = y / max(1, size - 1)
-        background = [TOP[c] + (BOTTOM[c] - TOP[c]) * t for c in range(3)]
         for x in range(size):
             i = y * size + x
             cover = sprout[i] / 255
             o = i * 4
             for c in range(3):
-                rgba[o + c] = round(background[c] + (SPROUT[c] - background[c]) * cover)
+                rgba[o + c] = round(BACKGROUND[c] + (SPROUT[c] - BACKGROUND[c]) * cover)
             rgba[o + 3] = mask[i] if rounded else 255
     return rgba
 

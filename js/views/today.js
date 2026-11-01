@@ -5,7 +5,7 @@ import { BANDS, bandWord, insight } from '../insight.js';
 import { isIOS, isStandalone } from '../pwa.js';
 import { openMarkForm } from './recovery.js';
 import { avg, esc, fmtHM, fmtHours, sum } from '../util.js';
-import { areaColor, ask, entryList, ratingScale, refresh, savedToast, toast } from '../ui.js';
+import { areaColor, ask, entryList, fader, fieldSavedToast, ratingScale, refresh, savedToast, tickBar, toast } from '../ui.js';
 
 const SCALES = [
   { field: 'energy', label: '에너지', low: '바닥', high: '넘침' },
@@ -30,30 +30,40 @@ let savedAt = 0; // 저장 직후 한 번 더 눌려도 오류 안내로 덮지 
 let shownDay = todayKey();
 const OLDEST_DAYS = 29; // 통계에서 볼 수 있는 가장 오래된 날
 let daysBack = 0; // 밀린 날을 채우는 중이면 며칠 전인지
+let sleepOpen = null; // 수면 입력칸. null이면 아직 정해지지 않아서, 그날 수면 기록이 없으면 연다.
+let sleepShown = false; // 저절로 열린 입력칸을 타일을 눌러 이미 보여줬는지
+const LONG_WORD = 13; // 이보다 긴 말은 큰 글씨로 쓰면 네 줄을 넘는다
+const SHORT_WORD = 11; // 이 안의 말은 가장 큰 글씨로 써도 두 줄에 들어간다
 
-function loadCard(state, i) {
-  if (state.profile.hide) return '';
-  const words = {
+const pickedDay = () => addDays(shownDay, -daysBack);
+
+/** 수면 입력칸을 처음 상태로 돌린다. 날이 바뀌거나 기록을 지웠을 때 쓴다. */
+export function resetSleepForm() {
+  sleepOpen = null;
+  sleepShown = false;
+}
+
+function loadHero(state, i) {
+  if (state.profile.hide) return '<div class="hero"><h1 class="hero-word">오늘</h1></div>';
+  const [word, note] = {
     empty: i.savedDays ? ['컨디션 기록이 아직 없어요', `기록 ${i.savedDays}일은 저장돼 있어요. 컨디션을 두 가지 이상 남기면 비교할 수 있어요.`] : ['기록을 시작해볼까요', '컨디션을 남기면 내 평소를 알아가기 시작해요.'],
     building: [BANDS.building, `기록 ${i.entries}${i.entries < 7 ? '/7' : '일'}. 쌓일수록 내 기준에 가까워져요.`],
     unknown: ['최근 컨디션 기록이 없어서 지금은 알 수 없어요', '아래에서 3일 전까지 채울 수 있어요.'],
     restart: ['다시 시작해요', '쌓인 부하를 처음부터 다시 쌓아요.'],
     noUsual: [BANDS.building, '아직 비교할 평소가 없어요. 기록은 그대로 쌓이고 있어요.'],
-    trend: [i.band ? bandWord(i) : '', `기록 ${i.entries}일 · 최근 14일 중 힘든 날 ${i.recent.hard}일`],
+    trend: [i.band ? bandWord(i) : '', `최근 14일 중 <b>힘든 날 ${i.recent.hard}일</b>`],
   }[i.status];
-  return `<a class="card link-card" href="#/recovery">
-    <div class="grow">
-      <p class="eyebrow">오늘의 부하와 회복</p>
-      <p class="mini-band">${esc(words[0])}</p>
-      <p class="mini-advice">${esc(words[1])}</p>
-    </div>
-    <span class="chev" aria-hidden="true">›</span>
+  const days = i.recent.days.map((hard) => `<i${hard ? ' class="lit"' : hard === null ? ' class="none"' : ''}></i>`).join('');
+  return `<a class="hero" href="#/recovery">
+    <h1 class="hero-word${word.length > LONG_WORD ? ' long' : word.length <= SHORT_WORD ? ' xl' : ''}">${esc(word)}</h1>
+    ${i.recent.logged ? `<div class="ticks" role="img" aria-label="최근 14일 중 힘든 날 ${i.recent.hard}일">${days}</div>` : ''}
+    <p class="hero-note">${note}</p>
   </a>`;
 }
 
 function supportLine({ support }) {
   return support
-    ? `<div class="banner"><span>${esc(support.text)}</span><a class="btn small" href="#/help">도움받을 곳</a><button type="button" class="btn small ghost" data-action="support-close">닫기</button></div>`
+    ? `<div class="banner"><span>${esc(support.text)}</span><div class="banner-actions"><a class="btn small" href="#/help">도움받을 곳</a><button type="button" class="btn small ghost" data-action="support-close">닫기</button></div></div>`
     : '';
 }
 
@@ -65,25 +75,39 @@ function dayChips(today) {
 function conditionCard(state, today) {
   const day = addDays(today, -daysBack);
   const checkin = state.checkins[day] || {};
-  const night = state.sleep[day] || {};
-  const hours = sleepHours(night.bed, night.wake);
   return `<section class="card">
-    <div class="card-head"><h2>${daysBack ? `${fmtDay(day)}은 어땠나요` : '오늘은 어땠나요'}</h2></div>
+    <div class="card-head"><h2>${daysBack ? `<span class="nowrap">${fmtDay(day)}은</span> 어땠나요` : '오늘은 어땠나요'}</h2><button type="button" class="btn small outline" data-action="mark-day">지친 날로 표시</button></div>
     <div class="stack">
       ${dayChips(today)}
-      <div>${SCALES.map((s) => ratingScale(s, checkin[s.field], 'checkin')).join('')}</div>
+      <div class="faders">${SCALES.map((s) => fader(s, checkin[s.field], 'checkin')).join('')}</div>
       ${ratingScale(DETACH_SCALE, checkin.detach, 'checkin')}
-      <label class="field"><span>한 줄 메모 (선택)</span><input type="text" data-note maxlength="120" value="${esc(checkin.note || '')}" placeholder="기분이나 있었던 일을 짧게 남겨보세요"></label>
+      <label class="field"><span>한 줄 메모 (선택)</span><input type="text" data-note maxlength="120" value="${esc(checkin.note || '')}" placeholder="오늘을 짧게 남겨보세요"></label>
     </div>
-    <div class="divider"></div>
-    <div class="card-head"><h3>지난밤 수면</h3><span class="sleep-total" data-sleep-total>${hours != null ? fmtHours(hours) : '–'}</span></div>
+  </section>`;
+}
+
+function sleepTile(state, day) {
+  const night = state.sleep[day] || {};
+  const hours = sleepHours(night.bed, night.wake);
+  const total = hours == null ? null : Math.round(hours * 60);
+  const big = total == null ? '<span>–</span>' : `<span>${Math.floor(total / 60)}<small>시간</small></span>${total % 60 ? `<span>${total % 60}<small>분</small></span>` : ''}`;
+  return `<button type="button" class="card sleep-tile" data-action="sleep-open" aria-expanded="${!!sleepOpen}"${sleepOpen ? ' aria-controls="sleep-form"' : ''}>
+    <span class="sleep-name">${daysBack ? `${fmtDay(day)} 수면` : '어젯밤 수면'}</span>
+    <span class="sleep-big">${big}</span>
+    <span class="sleep-range">${total != null ? `${esc(night.bed)}–${esc(night.wake)}` : sleepOpen ? '아래에 남기기' : '눌러서 남기기'}</span>
+  </button>`;
+}
+
+function sleepForm(state, day) {
+  if (!sleepOpen) return '';
+  const night = state.sleep[day] || {};
+  return `<section class="card" id="sleep-form">
     <div class="stack">
       <div class="row">
         <label class="field grow"><span>잠든 시간</span><input type="time" data-sleep="bed" value="${esc(night.bed || '')}"></label>
         <label class="field grow"><span>일어난 시간</span><input type="time" data-sleep="wake" value="${esc(night.wake || '')}"></label>
       </div>
       ${ratingScale(SLEEP_SCALE, night.quality, 'sleep')}
-      <button type="button" class="btn block" data-action="mark-day">많이 지친 날이었나요? 지친 날로 표시</button>
     </div>
   </section>`;
 }
@@ -93,7 +117,7 @@ function entryCard(areas, today) {
     return `<section class="card"><h2>활동 기록</h2><p class="sub">설정에서 활동 영역을 먼저 추가해주세요.</p><a class="btn" href="#/settings">설정으로 가기</a></section>`;
   }
   const chips = areas
-    .map((a) => `<button type="button" class="chip" data-action="pick-area" data-id="${esc(a.id)}" aria-pressed="${a.id === draft.areaId}"><span class="dot" style="background:${areaColor(a)}"></span>${esc(a.emoji)} ${esc(a.label)}</button>`)
+    .map((a) => `<button type="button" class="chip" data-action="pick-area" data-id="${esc(a.id)}" aria-pressed="${a.id === draft.areaId}"><span class="dot" style="background:${areaColor(a)}"></span>${esc(a.label)}</button>`)
     .join('');
   const quick = QUICK_MINUTES.map((m) => `<button type="button" class="chip small" data-action="quick" data-value="${m}">+${m}분</button>`).join('');
   return `<section class="card">
@@ -112,14 +136,14 @@ function entryCard(areas, today) {
   </section>`;
 }
 
-function goalRow({ name, color, done, goal, ratio }) {
+function goalRow({ name, done, goal, ratio }) {
   const met = goal && ratio >= 1;
   return `<div class="goal">
     <div class="goal-head">
-      <span class="goal-name"><span class="dot" style="background:${color}"></span>${name}</span>
-      <span class="goal-val"><strong>${done}</strong>${goal ? ` / ${goal}` : ''}${met ? ' <span class="met">✓ 달성</span>' : ''}</span>
+      <span class="goal-name">${name}</span>
+      <span class="goal-val"><strong>${done}</strong>${met ? ' <span class="met">✓ 달성</span>' : goal ? ` / ${goal}` : ''}</span>
     </div>
-    <div class="bar"><span style="width:${Math.min(100, ratio * 100).toFixed(1)}%;background:${color}"></span></div>
+    ${tickBar(ratio, 30)}
   </div>`;
 }
 
@@ -130,8 +154,7 @@ function weekCard(state, areas, today) {
   const rows = areas.map((a) => {
     const done = sum(week.filter((e) => e.areaId === a.id), (e) => e.minutes);
     return goalRow({
-      name: `${esc(a.emoji)} ${esc(a.label)}`,
-      color: areaColor(a),
+      name: esc(a.label),
       done: fmtHM(done),
       goal: a.goal ? fmtHM(a.goal) : null,
       ratio: a.goal ? done / a.goal : 0,
@@ -140,14 +163,13 @@ function weekCard(state, areas, today) {
   const sleepAvg = avg(days.map((k) => state.sleep[k]).filter(Boolean).map((n) => sleepHours(n.bed, n.wake)).filter((h) => h != null));
   rows.push(
     goalRow({
-      name: '😴 평균 수면',
-      color: 'var(--s7)',
+      name: '평균 수면',
       done: sleepAvg == null ? '기록 없음' : fmtHours(sleepAvg),
       goal: fmtHours(state.sleepGoal),
       ratio: sleepAvg == null ? 0 : sleepAvg / state.sleepGoal,
     }),
   );
-  return `<section class="card">
+  return `<section class="card goals-tile">
     <div class="card-head"><h2>이번 주 목표</h2><span class="hint">${8 - days.length}일 남음</span></div>
     ${rows.join('')}
   </section>`;
@@ -163,8 +185,14 @@ function todayCard(state, today) {
 
 export function render(state) {
   const today = todayKey();
-  if (today !== shownDay) daysBack = 0; // 날이 바뀌면 어제 칸을 열어둔 채로 남기지 않는다
+  if (today !== shownDay) {
+    daysBack = 0; // 날이 바뀌면 어제 칸을 열어둔 채로 남기지 않는다
+    resetSleepForm();
+  }
   shownDay = today;
+  const day = pickedDay();
+  // 입력을 마쳐도 고르던 칸이 사라지지 않도록, 한 번 열린 뒤로는 사용자가 누를 때만 바꾼다
+  if (sleepOpen === null && sleepHours(state.sleep[day]?.bed, state.sleep[day]?.wake) == null) sleepOpen = true;
   const areas = activeAreas(state);
   // 입력 중이면 고른 영역을 몰래 바꾸지 않는다. 지워졌다면 기록할 때 알려준다.
   if (!document.activeElement?.closest?.('[data-form="entry"]') && !areas.some((a) => a.id === draft.areaId)) draft.areaId = areas[0]?.id ?? null;
@@ -177,19 +205,19 @@ export function render(state) {
       : '';
   const i = insight(state, today);
   return `${banner}${safariTip}
-    <header class="page-head">
-      <p class="eyebrow">오늘</p>
-      <h1>${fmtLong(today)}</h1>
-    </header>
     ${supportLine(i)}
-    <div data-slot="load">${loadCard(state, i)}</div>
+    <div data-slot="load">${loadHero(state, i)}</div>
     ${conditionCard(state, today)}
+    <div class="bento">
+      <div data-slot="sleep">${sleepTile(state, day)}</div>
+      <div data-slot="week">${weekCard(state, areas, today)}</div>
+    </div>
+    <div>${sleepForm(state, day)}</div>
     ${entryCard(areas, today)}
-    <div data-slot="week">${weekCard(state, areas, today)}</div>
     ${todayCard(state, today)}`;
 }
 
-const pickedDay = () => addDays(shownDay, -daysBack);
+export const label = () => fmtLong(todayKey());
 
 export const on = {
   async click(e) {
@@ -200,7 +228,18 @@ export const on = {
     else if (action === 'sleep') setSleep(pickedDay(), { [field]: Number(value) });
     else if (action === 'back') {
       daysBack = Number(value);
+      resetSleepForm();
       refresh();
+    } else if (action === 'sleep-open') {
+      // 열려 있어도 탭 막대에 가려 있었다면 닫지 않고 보여주기만 한다.
+      // 좁은 화면에서는 입력칸과 타일이 한 화면에 들어가지 않으니, 보여주는 건 한 번만 하고 다음에는 닫는다.
+      const before = scrollY;
+      if (sleepOpen && !sleepShown) document.getElementById('sleep-form')?.scrollIntoView({ block: 'nearest' });
+      sleepShown = true;
+      if (scrollY !== before) return;
+      sleepOpen = !sleepOpen;
+      refresh();
+      if (sleepOpen) document.getElementById('sleep-form').scrollIntoView({ block: 'nearest' });
     } else if (action === 'mark-day') {
       openMarkForm(pickedDay());
       location.hash = '#/recovery';
@@ -213,7 +252,8 @@ export const on = {
       draft.minutes = String((Number(input.value) || 0) + Number(value));
       input.value = draft.minutes;
     } else if (action === 'clear-sample' && (await ask('샘플 데이터와 그동안 직접 남긴 기록까지 모두 지워져요. 지우고 새로 시작할까요?', '모두 지우기'))) {
-      resetState();
+      resetSleepForm();
+      resetState({ keepTheme: true });
       savedToast('깨끗하게 비웠어요. 오늘부터 시작해봐요!');
     }
   },
@@ -229,12 +269,10 @@ export const on = {
       // 시간 입력칸은 값을 고치는 도중에도 change가 불려서, 전체를 다시 그리지 않고 필요한 곳만 고친다
       setSleep(pickedDay(), { [el.dataset.sleep]: el.value }, { quiet: true });
       const state = getState();
-      const night = state.sleep[pickedDay()];
-      const hours = sleepHours(night.bed, night.wake);
-      document.querySelector('[data-sleep-total]').textContent = hours != null ? fmtHours(hours) : '–';
-      document.querySelector('[data-slot="load"]').innerHTML = loadCard(state, insight(state, shownDay));
+      document.querySelector('[data-slot="sleep"]').innerHTML = sleepTile(state, pickedDay());
+      document.querySelector('[data-slot="load"]').innerHTML = loadHero(state, insight(state, shownDay));
       document.querySelector('[data-slot="week"]').innerHTML = weekCard(state, activeAreas(state), shownDay);
-    } else if ('note' in el.dataset) savedToast('메모를 저장했어요');
+    } else if ('note' in el.dataset) fieldSavedToast('메모를 저장했어요');
   },
   submit(e) {
     e.preventDefault();

@@ -1,7 +1,7 @@
 // node --test tests/ 로 실행한다
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { addDays, weekStartKey } from '../js/dates.js';
+import { addDays, todayKey, weekStartKey } from '../js/dates.js';
 import { insight } from '../js/insight.js';
 import { buildSample } from '../js/sample.js';
 import { createDefaultState, isBackup, normalize } from '../js/store.js';
@@ -350,4 +350,18 @@ test('예전 백업은 표시 없이 그대로 열린다', () => {
   assert.deepEqual(old.weekly, {});
   assert.equal(old.checkins[TODAY].note, '메모');
   assert.equal(insight(old, TODAY).status, 'building');
+});
+
+test('오늘 화면의 14일 눈금은 힘든 날과 기록한 날 수와 같다', () => {
+  const { days, hard, logged } = insight(buildSample(), todayKey()).recent;
+  assert.equal(days.length, 14);
+  assert.equal(days.filter(Boolean).length, hard);
+  assert.equal(days.filter((d) => d !== null).length, logged);
+});
+
+test('예전 시스템 테마는 다크로 옮기고, 고른 테마는 그대로 둔다', () => {
+  assert.equal(normalize({ theme: 'system' }).theme, 'dark');
+  assert.equal(normalize({}).theme, 'dark');
+  assert.equal(normalize({ theme: 'light' }).theme, 'light');
+  assert.equal(normalize({ theme: 'auto' }).theme, 'auto');
 });

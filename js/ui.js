@@ -23,6 +23,34 @@ export function ratingScale({ field, label, low, high }, value, action) {
   </div>`;
 }
 
+/** 눈금 막대. 칸이 통째로 켜지고, 다 채우지 못했으면 마지막 칸은 켜지 않는다. */
+export function tickBar(ratio, n = 52, kind = '') {
+  const on = ratio >= 1 ? n : ratio > 0 ? Math.min(n - 1, Math.max(1, Math.round(ratio * n))) : 0;
+  return `<div class="bar ${kind}">${Array.from({ length: n }, (_, i) => `<i${i < on ? ' class="on"' : ''}></i>`).join('')}</div>`;
+}
+
+const UPDOWN_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10l4-4 4 4M8 14l4 4 4-4"/></svg>';
+
+/** 1~5점 세로 페이더. 끌면 페이지 스크롤과 부딪히므로 높이마다 놓인 버튼을 눌러 고른다. */
+export function fader({ field, label, low, high }, value, action) {
+  const buttons = [5, 4, 3, 2, 1]
+    .map((n) => `<button type="button" data-action="${action}" data-field="${field}" data-value="${n}" aria-pressed="${value === n}" aria-label="${label} ${n}점"></button>`)
+    .join('');
+  const place = { 1: ' above', 5: ' full' }[value] ?? ''; // 양 끝에서는 숫자가 위아래 글자와 겹치지 않게 옮긴다
+  const level = value
+    ? `<span class="fader-fill"></span><span class="fader-line${place}"></span><span class="fader-num${place}">${value}</span>`
+    : `<span class="fader-knob">${UPDOWN_ICON}</span>`;
+  return `<div class="fader-col">
+    <p class="fader-name">${label}</p>
+    <div class="fader"${value ? ` style="--level:${value * 20}%"` : ''}>
+      ${level}
+      <span class="fader-end top">5 ${high}</span>
+      <span class="fader-end bottom">1 ${low}</span>
+      <div class="fader-btns" role="group" aria-label="${label}">${buttons}</div>
+    </div>
+  </div>`;
+}
+
 const X_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
 function entryItem(entry, area) {
@@ -59,10 +87,20 @@ export function toast(message, action) {
       action.onClick();
       hide();
     });
-    // 되돌리려고 누르는 사이에 사라지지 않게 한다
-    button.addEventListener('pointerdown', () => clearTimeout(toastTimer));
-    button.addEventListener('pointercancel', () => {
+    const hideSoon = () => {
+      clearTimeout(toastTimer);
       toastTimer = setTimeout(hide, 1500);
+    };
+    let pressed = false; // 이 버튼에서 왼쪽 버튼이나 손가락으로 누르기 시작했는지
+    // 되돌리려고 누르는 사이에 사라지지 않게 한다
+    button.addEventListener('pointerdown', (e) => {
+      pressed = e.button === 0;
+      if (pressed) clearTimeout(toastTimer);
+    });
+    button.addEventListener('pointercancel', hideSoon);
+    // 마우스로 누른 채 벗어나면 pointercancel도 클릭도 오지 않는다
+    button.addEventListener('pointerleave', () => {
+      if (pressed) hideSoon();
     });
     el.append(button);
   }
@@ -73,6 +111,12 @@ export function toast(message, action) {
 
 /** 저장했다고 알리는 안내. 저장이 안 되는 동안에는 성공했다고 말하지 않는다. */
 export const savedToast = (message, action) => toast(hasSaveFailed() ? '화면에는 보이지만 저장되지 않았어요' : message, action);
+
+/** 칸을 벗어나며 띄우는 안내. 되돌리기나 새로고침을 누르는 순간에 나오면 그 버튼을 없애버리므로, 버튼이 떠 있으면 말하지 않는다. */
+export const fieldToast = (message, show = toast) => {
+  if (!document.querySelector('#toast button')) show(message);
+};
+export const fieldSavedToast = (message) => fieldToast(message, savedToast);
 
 /** 지우기처럼 되돌릴 수 없는 일 앞에서 묻는 확인 창. true/false로 끝난다. */
 export function ask(message, confirmLabel) {

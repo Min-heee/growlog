@@ -1,13 +1,13 @@
 // 회복 화면: 내 평소와 비교한 부하, 지친 날 기록, 이번 주 돌아보기, 계산 근거
 import { addMark, addRebase, closeMarks, deleteMarks, getState, MARK_TAGS, reopenMarks, restoreMarks, setSupportSeen, setWeekly } from '../store.js';
-import { addDays, fmtDay, fmtShort, rangeKeys, sleepHours, todayKey, weekStartKey } from '../dates.js';
+import { addDays, fmtDay, fmtMonthDay, rangeKeys, sleepHours, todayKey, weekStartKey } from '../dates.js';
 import { BANDS, bandWord, insight, MILESTONES, SEVERITY } from '../insight.js';
 import { K } from '../strain.js';
 import { zoneChart } from '../charts.js';
 import { esc, fmt1, fmtHM, fmtHours, josa } from '../util.js';
-import { ask, ratingScale, refresh, savedToast, toast } from '../ui.js';
+import { ask, ratingScale, refresh, savedToast, tickBar, toast } from '../ui.js';
 
-const HEADER = '<header class="page-head"><p class="eyebrow">부하와 회복</p><h1>오늘의 부하와 회복</h1></header>';
+const HEADER = '<header class="page-head"><h1>부하와 회복</h1></header>';
 const CLAIM = '기록하신 내용을 바탕으로, 최근의 부하·수면·회복이 내 평소와 얼마나 다른지 요약해요. 번아웃이나 건강 상태를 판단하지 않아요.';
 const HIDDEN_CLAIM = '기록은 그대로 쌓이고 추정만 숨겼어요. 번아웃이나 건강 상태를 판단하지 않아요.';
 const OLDEST_MARK = 90; // 지난 일도 떠올려 남길 수 있게 3개월까지 받는다
@@ -33,6 +33,7 @@ export function openMarkForm(date) {
   form = { ...CLOSED_FORM, open: true, date: date || '' };
 }
 
+const LONG_WORD = 13; // 이보다 긴 말은 큰 글씨로 쓰면 네 줄을 넘는다
 const nextMilestone = (n) => MILESTONES.find((m) => n < m) ?? MILESTONES.at(-1);
 
 function buildingText(n) {
@@ -47,8 +48,11 @@ function noUsualNote(i) {
 }
 
 function hero(i) {
-  const strip = `<p class="strip">기록 ${i.entries}일 · 표시한 때 ${i.episodes.length}번 · 최근 14일 중 힘든 날 ${i.recent.hard}일</p>`;
-  const card = (title, note) => `<section class="card"><p class="eyebrow">쌓인 부하 (추정)</p><p class="band-word">${title}</p><p class="sub flush">${note}</p>${i.entries ? strip : ''}</section>`;
+  const card = (title, note, more = '') => `<header class="hero">
+    <h1 class="hero-word mid${title.length > LONG_WORD ? ' long' : ''}">${title}</h1>
+    <p class="hero-note">${note}</p>
+    ${more}
+  </header>`;
   switch (i.status) {
     case 'empty':
       if (i.savedDays) return card('컨디션 기록이 아직 없어요', `기록 ${i.savedDays}일은 저장돼 있어요. 오늘의 컨디션을 두 가지 이상 남기면 내 평소와 비교할 수 있어요.`);
@@ -61,18 +65,21 @@ function hero(i) {
       return card(BANDS.building, noUsualNote(i));
     case 'building': {
       const goal = nextMilestone(i.entries);
-      return `<section class="card">
-        <p class="eyebrow">쌓인 부하 (추정)</p>
-        <p class="band-word">${BANDS.building}</p>
-        <p class="sub">${buildingText(i.entries)}</p>
-        <div class="bar"><span style="width:${Math.min(100, (i.entries / goal) * 100).toFixed(1)}%;background:var(--ink-2)"></span></div>
-        <p class="hint strip-hint">다음 단계까지 기록 ${goal - i.entries}일</p>
-        ${strip}
-      </section>`;
+      return card(BANDS.building, buildingText(i.entries), `${tickBar(i.entries / goal, 52, 'milestone')}
+        <p class="hint strip-hint">다음 단계까지 기록 ${goal - i.entries}일</p>`);
     }
     default:
       return card(bandWord(i), i.sleepOnly ? '수면이 필요한 양보다 적은 날이 이어져서 높게 나왔어요. 다른 기록은 내 평소와 비슷해요.' : BAND_NOTE[i.band]);
   }
+}
+
+function readouts(i) {
+  if (!i.entries) return '';
+  return `<div class="readouts">
+    <span>기록 <b>${i.entries}일</b></span>
+    <span>표시한 때 <b>${i.episodes.length}번</b></span>
+    <span>최근 14일 중 힘든 날 <b>${i.recent.hard}일</b></span>
+  </div>`;
 }
 
 function flagCard(i) {
@@ -132,16 +139,15 @@ function trendRows(i) {
   return [...i.trend]
     .reverse()
     .filter((p) => p.band || marked.has(p.key))
-    .map((p) => `<tr><td>${marked.has(p.key) ? '▼ ' : ''}${esc(fmtDay(p.key))}</td><td>${esc(p.band ? BANDS[p.band] : noRating(p))}</td><td>${p.hardWindow ? `${p.hardCount}/${p.hardWindow}일` : '–'}</td></tr>`)
+    .map((p) => `<tr><td>${marked.has(p.key) ? '○ ' : ''}${esc(fmtDay(p.key))}</td><td>${esc(p.band ? BANDS[p.band] : noRating(p))}</td><td>${p.hardWindow ? `${p.hardCount}/${p.hardWindow}일` : '–'}</td></tr>`)
     .join('');
 }
 
 function trendCard(i) {
   if (i.entries < K.TREND_MIN || i.noUsual) return '';
-  return `<section class="card">
-    <h2>최근 60일 쌓인 부하</h2>
-    <p class="sub">띠는 내 평소 범위예요. 위쪽 ▼는 표시한 날이에요. 점수가 아니라 내 평소와의 차이를 그린 그림이에요.</p>
-    <div class="chart" data-chart="trend"></div>
+  return `<section class="trend-block" aria-label="최근 60일 쌓인 부하">
+    <div class="chart bleed" data-chart="trend"></div>
+    <p class="hint strip-hint">최근 60일이에요. 띠는 내 평소 범위, 동그라미는 표시한 날이에요. 점수가 아니라 내 평소와의 차이를 그린 그림이에요.</p>
     <details class="table-view"><summary>표로 보기</summary><div class="table-wrap"><table><thead><tr><th>날짜</th><th>상태</th><th>최근 14일 힘든 날</th></tr></thead><tbody>${trendRows(i)}</tbody></table></div></details>
   </section>`;
 }
@@ -185,7 +191,7 @@ function personalCard(i, profile) {
     <p class="sub">처음에는 기본값으로 시작하고, 기록이 쌓일수록 내 값으로 옮겨가요. 기본값의 근거는 아래 계산 방법에 있어요.</p>
     <div class="goal">
       <div class="goal-head"><span class="goal-name">내 평소</span><span class="goal-val"><strong>내 기록 ${own}%</strong></span></div>
-      <div class="bar"><span style="width:${own}%;background:var(--ink-2)"></span></div>
+      ${tickBar(p.own)}
     </div>
     <p class="mini-advice"><b>'한동안 평소보다 높아요' 기준.</b> ${esc(line)}</p>
     <p class="mini-advice"><b>필요한 수면.</b> ${p.showNeed ? `내 기록으로는 ${esc(fmtHours(p.need))}이에요.` : `기본값 ${esc(fmtHours(p.need0))}이에요. 잠과 컨디션 기록이 쌓이면 내 기록을 반영해요.`}</p>
@@ -214,15 +220,16 @@ function markForm(today) {
 }
 
 function episodeFacts(e, theta, hide) {
-  const facts = e.logged >= 3 ? [`그 전 2주 중 ${e.logged}일 기록, 힘든 날 ${e.hardDays}일`] : [];
-  if (e.debtH != null && !hide) facts.push(`수면 부족 누적 ${fmtHours(e.debtH)}`);
-  if (e.loadHoursPerWeek != null) facts.push(`주 ${Math.round(e.loadHoursPerWeek)}시간 부하`);
+  const fact = (name, value) => `<div><span>${name}</span><b>${value}</b></div>`;
+  const facts = e.logged >= 3 ? [fact('그 전 2주 중', `${e.logged}<small>일 기록</small>`), fact('힘든 날', `${e.hardDays}<small>일</small>`)] : [];
+  if (e.debtH != null && !hide) facts.push(fact('수면 부족 누적', `${fmt1(e.debtH)}<small>시간</small>`));
+  if (e.loadHoursPerWeek != null) facts.push(fact('부하', `<small>주 </small>${Math.round(e.loadHoursPerWeek)}<small>시간</small>`));
   if (!facts.length) return '<p class="hint">그 전 기록이 적어서 비교하지 못했어요.</p>';
   let level = e.logged < 3 ? '컨디션 기록이 적어서 힘든 날은 세지 못했어요' : '';
   if (hide) level = '';
   else if (e.level != null && !e.visible) level = '기록상 잘 보이지 않았어요';
   else if (e.level != null) level = e.level >= theta ? '쌓인 부하는 평소보다 꽤 높았어요' : '쌓인 부하는 평소보다 조금 높았어요';
-  return `<div class="chips static">${facts.map((text) => `<span class="fact">${esc(text)}</span>`).join('')}</div>${level ? `<p class="hint">${level}</p>` : ''}`;
+  return `<div class="fact-grid">${facts.join('')}</div>${level ? `<p class="hint">${level}</p>` : ''}`;
 }
 
 function episodeRow(e, theta, hide) {
@@ -230,10 +237,10 @@ function episodeRow(e, theta, hide) {
   const about = e.ids.length ? SEVERITY[e.sev] : '돌아보기에서 많이 쌓였다고 답한 주';
   const fuzzy = e.fuzz ? ` (${e.fuzz}일쯤 전후)` : '';
   const buttons = [];
-  if (e.open) buttons.push(`<button type="button" class="btn small" data-action="mark-close" data-id="${esc(e.ids.join(','))}">이제 괜찮아졌어요</button>`);
+  if (e.open) buttons.push(`<button type="button" class="btn primary block" data-action="mark-close" data-id="${esc(e.ids.join(','))}">이제 괜찮아졌어요</button>`);
   buttons.push(`<button type="button" class="btn small ghost" data-action="mark-delete" data-id="${esc(e.ids.join(','))}" data-weeks="${esc(e.weeks.join(','))}">지우기</button>`);
   return `<div class="episode">
-    <div class="episode-head"><strong>${esc(when)}${fuzzy}</strong>${e.open ? '<span class="hint">회복 중</span>' : ''}</div>
+    <div class="episode-head"><strong>${esc(when)}${fuzzy}</strong>${e.open ? '<span class="pill-on">회복 중</span>' : ''}</div>
     <p class="episode-sev">${esc(about)}${e.tags.length ? ` · ${esc(e.tags.join(', '))}` : ''}</p>
     ${episodeFacts(e, theta, hide)}
     ${buttons.length ? `<div class="btn-row">${buttons.join('')}</div>` : ''}
@@ -249,8 +256,8 @@ function overlayLine(o) {
 }
 
 function marksCard(i, today, hide) {
-  return `<section class="card">
-    <div class="card-head"><h2>지친 날</h2>${form.open ? '' : '<button type="button" class="btn small" data-action="mark-open">지친 날로 표시</button>'}</div>
+  return `<section class="card marks-card">
+    <div class="card-head"><h2>지친 날</h2>${form.open ? '' : '<button type="button" class="btn small outline" data-action="mark-open">지친 날로 표시</button>'}</div>
     <p class="sub">남겨두면 그때까지 무엇이 얼마나 쌓였는지 볼 수 있어요. 번아웃처럼 느껴진 날도 여기에 표시해 주세요. 지난 날도 괜찮아요.</p>
     ${markForm(today)}
     ${i.overlay && !hide ? `<p class="lead">${esc(overlayLine(i.overlay))}</p>` : ''}
@@ -350,15 +357,15 @@ export function render(state) {
       ${diaryCard(state, today)}
       <p class="disclaimer">${HIDDEN_CLAIM}</p>`;
   }
-  return `${HEADER}
-    ${supportCard(i)}
+  return `${supportCard(i)}
     ${hero(i)}
+    ${trendCard(i)}
+    ${readouts(i)}
+    ${marksCard(i, today, false)}
     ${flagCard(i)}
     ${newNormalCard(i)}
     ${helpedCard(i)}
-    ${marksCard(i, today, false)}
     ${notesCard(i)}
-    ${trendCard(i)}
     ${weeklyCard(state, i, today)}
     ${diaryCard(state, today)}
     ${usualCard(i)}
@@ -366,6 +373,8 @@ export function render(state) {
     ${METHOD}
     <p class="disclaimer">${CLAIM}</p>`;
 }
+
+export const label = (state) => (state.profile.hide ? '회복' : '쌓인 부하 (추정)');
 
 export function drawCharts(root) {
   const el = root.querySelector('[data-chart="trend"]');
@@ -376,11 +385,11 @@ export function drawCharts(root) {
     if (marked.has(p.key)) rows.push({ label: '', value: '지친 날로 표시' });
     if (p.hardWindow) rows.push({ label: '최근 14일 힘든 날', value: `${p.hardCount}/${p.hardWindow}일` });
     if (p.debt != null) rows.push({ label: '수면 부족 누적', value: fmtHours(p.debt) });
-    return { label: fmtShort(p.key), title: fmtDay(p.key), value: p.T, rows };
+    return { label: fmtMonthDay(p.key), title: fmtDay(p.key), value: p.T, rows };
   });
   const keys = chart.trend.map((p) => p.key);
   const marks = [...marked].map((k) => keys.indexOf(k)).filter((n) => n >= 0);
-  zoneChart(el, { points, marks, zoneTop: K.T_HIGH, color: 'var(--ink-2)', label: '최근 60일 쌓인 부하와 내 평소 범위' });
+  zoneChart(el, { points, marks, zoneTop: K.T_HIGH, label: '최근 60일 쌓인 부하와 내 평소 범위' });
 }
 
 export const mount = (root) => drawCharts(root);

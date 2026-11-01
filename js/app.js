@@ -45,8 +45,7 @@ const CRASH_SCREEN = `<section class="card">
 
 function applyTheme(theme) {
   const html = document.documentElement;
-  if (theme === 'light' || theme === 'dark') html.dataset.theme = theme;
-  else delete html.dataset.theme;
+  html.dataset.theme = theme;
   // 폰 상태 표시줄 색도 앱 안에서 고른 테마를 따라가게 한다
   const page = getComputedStyle(html).getPropertyValue('--page').trim();
   document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
@@ -68,6 +67,15 @@ const editing = () => {
 function showSaveWarning() {
   const warning = document.getElementById('save-warning');
   if (warning) warning.hidden = !hasSaveFailed();
+}
+
+/** 머리글의 작은 글자: 화면마다 지금 무엇을 보는지 말한다 */
+function showLabel(state) {
+  const label = document.getElementById('top-label');
+  if (!label) return;
+  const view = views[shown];
+  label.textContent = view.label?.(state) ?? '그로우로그';
+  label.parentElement.classList.toggle('live', view.live?.() === true);
 }
 
 // 다시 그려도 펼쳐둔 표나 설명이 닫히지 않게 한다. 닫히면 아래 내용이 위로 밀려 보던 자리를 잃는다.
@@ -106,6 +114,7 @@ function renderAround(field) {
   });
   views[shown].mount?.(root, getState());
   reopenDetails(open);
+  showLabel(getState());
 }
 
 // 타이머가 끝나거나 다른 탭이 저장해도 입력 중인 칸은 그대로 둔다. 다시 그리면 키보드가 내려가고 글자가 사라진다.
@@ -147,6 +156,7 @@ function render() {
   }
   reopenDetails(open);
   showSaveWarning();
+  showLabel(state);
   document.querySelectorAll('[data-nav]').forEach((a) => {
     if (a.dataset.nav === name) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
@@ -172,7 +182,7 @@ function handleShared(e) {
   return true;
 }
 
-for (const type of ['click', 'input', 'change', 'submit']) {
+for (const type of ['click', 'keydown', 'input', 'change', 'submit']) {
   root.addEventListener(type, (e) => {
     if (type === 'click' && handleShared(e)) return;
     views[shown].on?.[type]?.(e);

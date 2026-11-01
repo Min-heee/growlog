@@ -3,14 +3,15 @@ import { addArea, areaById, canAddArea, canRead, createDefaultState, getState, i
 import { exportData } from '../backup.js';
 import { buildSample } from '../sample.js';
 import { installState, promptInstall } from '../pwa.js';
+import { resetSleepForm } from './today.js';
 import { resetTimer } from './timer.js';
 import { clamp, esc } from '../util.js';
-import { areaColor, ask, refresh, savedToast, toast } from '../ui.js';
+import { areaColor, ask, fieldSavedToast, fieldToast, refresh, savedToast, toast } from '../ui.js';
 
 const THEMES = [
-  ['system', '시스템'],
-  ['light', '라이트'],
   ['dark', '다크'],
+  ['light', '라이트'],
+  ['auto', '기기 설정'],
 ];
 
 const ROLES = [
@@ -99,6 +100,8 @@ function profileCard({ role, age, hide }) {
   </section>`;
 }
 
+export const label = () => '설정';
+
 export function render(state) {
   const active = state.areas.filter((a) => !a.archived);
   const hidden = state.areas.filter((a) => a.archived);
@@ -106,7 +109,6 @@ export function render(state) {
   const limit = `<p class="hint">영역은 최대 ${MAX_AREAS}개까지 만들 수 있어요.${hidden.length ? ' 숨긴 영역을 삭제하면 자리가 생겨요.' : ''}</p>`;
   return `
     <header class="page-head">
-      <p class="eyebrow">설정</p>
       <h1>목표와 데이터</h1>
     </header>
     <section class="card">
@@ -128,15 +130,15 @@ export function render(state) {
     </section>
     <section class="card">
       <h2>화면 테마</h2>
-      <p class="sub">시스템을 고르면 기기 설정을 따라가요.</p>
+      <p class="sub">기기 설정을 고르면 기기의 라이트·다크를 따라가요.</p>
       <div class="seg" role="group" aria-label="테마">${themes}</div>
     </section>
     <section class="card">
       <h2>데이터</h2>
       <p class="sub">모든 기록은 이 브라우저에만 저장돼요. 브라우저 데이터를 지우거나 기기를 바꾸기 전에 내보내기로 백업해두세요.</p>
-      <div class="btn-row">
+      <div class="btn-row data-actions">
         <button type="button" class="btn" data-action="export">내보내기</button>
-        <label class="btn" for="import-file">가져오기</label>
+        <label class="btn" for="import-file" role="button" tabindex="0" data-action="import">가져오기</label>
         <button type="button" class="btn" data-action="sample">샘플 데이터 넣기</button>
         <button type="button" class="btn danger" data-action="reset">모두 지우기</button>
       </div>
@@ -180,8 +182,8 @@ function hasUserData() {
 
 async function loadSample() {
   if (hasUserData() && !(await ask('지금 기록과 영역 설정을 샘플 데이터로 바꿀까요? 기존 내용은 사라져요.', '바꾸기'))) return;
-  replaceState(buildSample());
-  savedToast('114주치 샘플 데이터를 넣었어요');
+  replaceState({ ...buildSample(), theme: getState().theme });
+  savedToast('14주치 샘플 데이터를 넣었어요');
   location.hash = '#/today';
 }
 
@@ -221,8 +223,16 @@ export const on = {
     else if (action === 'sample') loadSample();
     else if (action === 'reset' && (await ask('모든 기록과 설정을 지울까요? 되돌릴 수 없어요.', '모두 지우기'))) {
       resetTimer();
+      resetSleepForm();
       resetState();
       savedToast('모두 지웠어요');
+    }
+  },
+  // 라벨은 키보드로 눌리지 않으니 파일 고르는 창을 직접 연다
+  keydown(e) {
+    if (e.target.dataset.action === 'import' && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      picker.click();
     }
   },
   // 타이머가 끝나 화면을 다시 그리거나 앱을 벗어나도 고치던 내용이 남도록 글자마다 저장한다
@@ -242,18 +252,18 @@ export const on = {
         // 글자마다 저장하므로 저장된 이름은 지우다 남은 글자다. 고치기 전 이름으로 되돌린다.
         el.value = el.defaultValue;
         updateArea(el.dataset.id, { label: el.defaultValue }, { quiet: true });
-        toast('이름은 비워둘 수 없어요');
+        fieldToast('이름은 비워둘 수 없어요');
         return;
       }
       updateArea(el.dataset.id, { [field]: value }, { quiet: true });
       el.value = value;
       el.defaultValue = value;
-      savedToast('저장했어요');
+      fieldSavedToast('저장했어요');
     } else if ('sleepGoal' in el.dataset) {
       const hours = clamp(Number(el.value) || 7, 4, 12);
       setSleepGoal(hours, { quiet: true });
       el.value = hours;
-      savedToast('저장했어요');
+      fieldSavedToast('저장했어요');
     }
   },
   submit(e) {

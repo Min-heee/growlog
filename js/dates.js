@@ -34,6 +34,10 @@ export function fmtDay(key) {
   const d = fromKey(key);
   return `${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAYS[d.getDay()]})`;
 }
+export function fmtMonthDay(key) {
+  const d = fromKey(key);
+  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+}
 export function fmtShort(key) {
   const d = fromKey(key);
   return `${d.getMonth() + 1}/${d.getDate()}`;
