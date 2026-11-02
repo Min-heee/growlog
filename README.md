@@ -55,6 +55,10 @@ cd ios && xcodegen generate && open GrowLog.xcodeproj
 | 설정 | 영역 추가(최대 6개), 주간 목표, 수면 목표, 하는 일과 나이, 추정 숨기기, 테마, JSON 백업·복원, 샘플 데이터 |
 | 많이 힘들어요 | 모든 화면 머리글에서 열리는 상담 연락처 |
 
+## 말끝 통역 (따로 쓰는 도구)
+
+`interpreter/`는 그로우로그와 별개인 통역 웹페이지예요. 말 끝에 "번역" 같은 끝말을 붙이면 조용해질 때까지 기다리지 않고 바로 번역해서 읽어줘요. 쓰는 법은 [interpreter/README.md](interpreter/README.md)에 있어요.
+
 ## 코드 구조
 
 ```
