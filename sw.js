@@ -140,8 +140,10 @@ async function respond(request) {
 }
 
 let replaced = false; // sw.js가 바뀐 배포면 설치 단계에서 새 버전을 받으므로, 활성화한 뒤에 알린다
+let upgraded = false; // 옛 워커를 밀어냈다. 옛 코드가 떠 있는 창은 새 형식의 기록(영역 7~8개, 색 7~10번)을 자기 형식으로 줄여 덮어쓴다
 
 self.addEventListener('install', (event) => {
+  upgraded = !!self.registration.active;
   event.waitUntil(
     update().then((changed) => {
       replaced = changed && !!self.registration.active;
@@ -150,11 +152,17 @@ self.addEventListener('install', (event) => {
   );
 });
 
+/** 열린 창을 모두 새 코드로 다시 연다. 다시 여는 요청은 활성화가 끝나야 처리되므로 끝나기를 기다리지 않는다 */
+async function reloadPages() {
+  const pages = await self.clients.matchAll({ type: 'window' });
+  pages.forEach((page) => page.navigate(page.url).catch(() => {}));
+}
+
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     removeOldCaches()
       .then(() => self.clients.claim())
-      .then(() => (replaced ? tellPages() : undefined)),
+      .then(() => (upgraded ? reloadPages() : replaced ? tellPages() : undefined)),
   );
 });
 

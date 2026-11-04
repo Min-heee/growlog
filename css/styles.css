@@ -20,7 +20,7 @@
   --accent-line: #c6ff3d; /* 선과 글자로 쓰는 라임. 라이트에서는 진한 초록으로 바뀐다 */
   --glow: rgba(198, 255, 61, 0.55);
   --success: #c6ff3d;
-  /* 영역 색: 고정 순서로 배정, 7번은 수면 전용 */
+  /* 영역 색: 사용자가 영역마다 하나씩 고른다 */
   --s0: #6b7078;
   --s1: #c6ff3d;
   --s2: #7dd3fc;
@@ -28,8 +28,10 @@
   --s4: #fdba74;
   --s5: #f9a8d4;
   --s6: #5eead4;
-  --s7: #a5b4fc;
-  --s8: #fca5a5;
+  --s7: #3b82f6;
+  --s8: #f87171;
+  --s9: #fde047;
+  --s10: #d1d5db;
   --critical: #d03b3b; /* 저장 실패처럼 앱 자체의 문제에만 쓴다 */
   --critical-text: #ff8a80;
   --float-shadow: 0 16px 32px rgba(0, 0, 0, 0.5);
@@ -65,8 +67,10 @@
     --s4: #c2410c;
     --s5: #db2777;
     --s6: #0f766e;
-    --s7: #4f46e5;
-    --s8: #dc2626;
+    --s7: #2563eb;
+    --s8: #9f1239;
+    --s9: #a16207;
+    --s10: #475569;
     --critical-text: #c02b2b;
   --float-shadow: 0 8px 24px rgba(10, 11, 13, 0.1);
   }
@@ -97,8 +101,10 @@
   --s4: #c2410c;
   --s5: #db2777;
   --s6: #0f766e;
-  --s7: #4f46e5;
-  --s8: #dc2626;
+  --s7: #2563eb;
+  --s8: #9f1239;
+  --s9: #a16207;
+  --s10: #475569;
   --critical-text: #c02b2b;
   --float-shadow: 0 8px 24px rgba(10, 11, 13, 0.1);
 }
@@ -317,6 +323,19 @@ h1 { margin: 0; font-size: 40px; line-height: 1.12; font-weight: 700; letter-spa
 
 /* 칩·세그먼트 */
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip[aria-pressed="true"] .dot { box-shadow: 0 0 0 1.5px color-mix(in srgb, currentColor 45%, transparent); } /* 고른 칩 바탕과 색이 비슷해도 점이 보이게 */
+.chip.add { background: none; box-shadow: inset 0 0 0 1px var(--border-strong); color: var(--ink-2); }
+.swatches { display: grid; grid-template-columns: repeat(5, 36px); justify-content: space-between; row-gap: 12px; max-width: 280px; }
+.swatch-btn { position: relative; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: var(--c); }
+.swatch-btn::after { content: ""; position: absolute; inset: -4px; } /* 누르는 크기는 44px */
+.swatch-btn[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--ink); }
+.swatch-btn:disabled { opacity: 0.2; }
+.maker { padding: 16px; border-radius: 20px; background: var(--surface-2); }
+.maker input { background: var(--surface); }
+@media (max-width: 340px) {
+  .maker .seg-btn { padding-inline: 2px; font-size: 14px; white-space: nowrap; }
+}
+.maker .swatch-btn[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--surface-2), 0 0 0 5px var(--ink); }
 .chip {
   display: inline-flex;
   align-items: center;
@@ -612,7 +631,7 @@ th { color: var(--ink-2); font-weight: 600; }
   .mark-form .seg-btn { line-height: 1.2; white-space: normal; }
 }
 .mark-form input { background: var(--surface); }
-.mark-form .chips, .mark-form .btn-row, .dialog .btn-row { --surface-2: var(--surface); } /* 같은 색 바탕에서 버튼이 글자처럼 보이지 않게 */
+.mark-form .chips, .mark-form .btn-row, .dialog .btn-row, .maker .btn-row { --surface-2: var(--surface); } /* 같은 색 바탕에서 버튼이 글자처럼 보이지 않게 */
 .options { display: grid; gap: 6px; }
 .option { min-height: 48px; padding: 8px 16px; border: 0; border-radius: 14px; background: var(--surface); font-size: 14px; font-weight: 600; text-align: left; cursor: pointer; }
 .option[aria-pressed="true"] { background: var(--primary-bg); color: var(--primary-ink); }
@@ -713,8 +732,11 @@ th { color: var(--ink-2); font-weight: 600; }
 }
 .area-row .emoji-in { grid-area: emoji; padding: 0; text-align: center; }
 .area-row .name-in { grid-area: name; position: relative; }
-.area-row .name-in .dot { position: absolute; top: 50%; left: 13px; transform: translateY(-50%); }
-.area-row .name-in input { padding-left: 30px; }
+.area-row .name-in .dot-btn { position: absolute; inset: 0 auto 0 0; display: grid; place-items: center; width: 44px; padding: 0; border: 0; border-radius: 14px 0 0 14px; background: none; }
+.area-row .name-in .dot-btn .dot { width: 14px; height: 14px; }
+.area-row .name-in .dot-btn:focus-visible { outline-offset: -3px; }
+.area-row .area-colors { grid-column: 1 / -1; padding: 4px 0 4px 4px; }
+.area-row .name-in input { padding-left: 44px; }
 .area-row.add .name-in input { padding-left: 14px; }
 .area-row .suffix-in { grid-area: goal; }
 .area-row .suffix-in input { padding-right: 50px; } /* 다섯 자리 목표가 잘리지 않게 */

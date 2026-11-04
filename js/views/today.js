@@ -1,11 +1,11 @@
 // 오늘 화면: 컨디션·수면 체크인, 활동 기록, 이번 주 목표
-import { activeAreas, addEntry, areaById, getState, resetState, setCheckin, setSleep, setSupportSeen } from '../store.js';
+import { activeAreas, addArea, addEntry, areaById, canAddArea, freeColors, getState, MAX_AREAS, resetState, setCheckin, setSleep, setSupportSeen } from '../store.js';
 import { addDays, fmtDay, fmtLong, rangeKeys, sleepHours, todayKey, weekStartKey } from '../dates.js';
 import { BANDS, bandWord, insight } from '../insight.js';
 import { isIOS, isStandalone } from '../pwa.js';
 import { openMarkForm } from './recovery.js';
 import { avg, esc, fmtHM, fmtHours, sum } from '../util.js';
-import { areaColor, ask, entryList, fader, fieldSavedToast, ratingScale, refresh, savedToast, tickBar, toast } from '../ui.js';
+import { areaColor, ask, colorChoices, entryList, fader, fieldSavedToast, ratingScale, refresh, savedToast, tickBar, toast } from '../ui.js';
 
 const SCALES = [
   { field: 'energy', label: '에너지', low: '바닥', high: '넘침' },
@@ -22,9 +22,15 @@ const CATCH_UP = [
 ];
 const QUICK_MINUTES = [10, 30, 60];
 const PLACEHOLDER = { exercise: '예: 러닝 5km', study: '예: 영어 단어 50개', dev: '예: 로그인 기능 구현' };
+const KINDS = [
+  ['load', '에너지를 써요'],
+  ['recovery', '에너지를 채워요'],
+];
 
 // 입력 중인 내용은 화면을 다시 그려도 남아 있어야 한다
 let draft = { areaId: null, minutes: '', title: '', date: '' };
+const NEW_AREA = { open: false, label: '', color: null, kind: 'load' };
+let maker = { ...NEW_AREA }; // 활동 기록 칸에서 새 영역을 만드는 중인 내용
 let savedAt = 0; // 저장 직후 한 번 더 눌려도 오류 안내로 덮지 않는다
 // 자정을 넘겨 화면을 켜둔 채 입력해도 화면에 보이는 날짜로 저장되도록 그릴 때의 날짜를 쓴다
 let shownDay = todayKey();
@@ -41,6 +47,28 @@ const pickedDay = () => addDays(shownDay, -daysBack);
 export function resetSleepForm() {
   sleepOpen = null;
   sleepShown = false;
+}
+
+let makerWanted = false; // 다른 화면에서 영역을 만들러 왔다
+
+/** 다른 화면에서 오늘로 넘어오며 영역 만들기 칸을 열어둔다 */
+export function openAreaMaker() {
+  maker.open = true;
+  makerWanted = true;
+}
+
+export function arrive() {
+  if (!makerWanted) return;
+  makerWanted = false;
+  const input = document.querySelector('[data-maker="label"]');
+  input?.scrollIntoView({ block: 'center' });
+  input?.focus({ preventScroll: true });
+}
+
+/** 기록을 지우거나 바꿔 끼웠을 때, 만들다 만 영역도 함께 비운다 */
+export function resetTodayDrafts() {
+  resetSleepForm();
+  maker = { ...NEW_AREA };
 }
 
 function loadHero(state, i) {
@@ -112,19 +140,29 @@ function sleepForm(state, day) {
   </section>`;
 }
 
-function entryCard(areas, today) {
-  if (!areas.length) {
-    return `<section class="card"><h2>활동 기록</h2><p class="sub">설정에서 활동 영역을 먼저 추가해주세요.</p><a class="btn" href="#/settings">설정으로 가기</a></section>`;
-  }
+function areaMaker(state, areas) {
+  const free = freeColors(state);
+  const color = free.includes(maker.color) ? maker.color : free[0];
+  const kinds = KINDS.map(([value, label]) => `<button type="button" class="seg-btn" data-action="maker-kind" data-value="${value}" aria-pressed="${maker.kind === value}">${label}</button>`).join('');
+  return `<div class="maker stack" id="area-maker">
+    <label class="field"><span>이름</span><input data-maker="label" maxlength="12" value="${esc(maker.label)}" placeholder="예: 독서, 러닝, 영어" enterkeyhint="done"></label>
+    <div><div class="scale-head"><span class="scale-label">동그라미 색</span></div>${colorChoices(color, free, 'maker-color')}</div>
+    <div><div class="scale-head"><span class="scale-label">이 활동은</span><span class="scale-hint">쌓인 부하 계산에 쓰여요</span></div><div class="seg" role="group" aria-label="이 활동은">${kinds}</div></div>
+    <div class="btn-row">${areas.length ? '<button type="button" class="btn small" data-action="maker-close">취소</button>' : ''}<button type="button" class="btn small primary" data-action="maker-save">만들기</button></div>
+  </div>`;
+}
+
+function entryCard(state, areas, today) {
   const chips = areas
     .map((a) => `<button type="button" class="chip" data-action="pick-area" data-id="${esc(a.id)}" aria-pressed="${a.id === draft.areaId}"><span class="dot" style="background:${areaColor(a)}"></span>${esc(a.label)}</button>`)
     .join('');
+  // 영역이 없거나 쓰던 이름이 있으면 열어둔다. 다른 탭에서 영역이 생겨도 쓰던 이름이 사라지지 않는다.
+  const open = canAddArea(state) && (maker.open || !areas.length || maker.label.trim() !== '');
+  const add = areas.length && canAddArea(state) ? `<button type="button" class="chip add" data-action="maker-open" aria-expanded="${open}"${open ? ' aria-controls="area-maker"' : ''}>+ 새 영역</button>` : '';
   const quick = QUICK_MINUTES.map((m) => `<button type="button" class="chip small" data-action="quick" data-value="${m}">+${m}분</button>`).join('');
-  return `<section class="card">
-    <h2>활동 기록</h2>
-    <p class="sub">무엇을 얼마나 했는지 남겨요. 타이머를 쓰면 자동으로 기록돼요.</p>
-    <form class="stack" data-form="entry" novalidate>
-      <div class="chips" role="group" aria-label="영역">${chips}</div>
+  // 숨긴 영역도 자리를 차지하므로, 모두 숨겨 자리가 없으면 설정에서 되살리거나 지우게 한다
+  const full = `<p class="sub flush">영역은 ${MAX_AREAS}개까지 만들 수 있어요. 설정의 숨긴 영역에서 되살리거나 지워주세요.</p><a class="btn" href="#/settings">설정으로 가기</a>`;
+  const form = `<form class="stack" data-form="entry" novalidate>
       <label class="field"><span>한 일</span><input name="title" data-draft="title" maxlength="60" value="${esc(draft.title)}" placeholder="${esc((Object.hasOwn(PLACEHOLDER, draft.areaId ?? '') && PLACEHOLDER[draft.areaId]) || '예: 무엇을 했는지 짧게')}"></label>
       <div class="row">
         <label class="field grow"><span>시간(분)</span><input name="minutes" data-draft="minutes" type="number" inputmode="numeric" min="1" max="1440" value="${esc(draft.minutes)}" placeholder="30"></label>
@@ -132,7 +170,15 @@ function entryCard(areas, today) {
       </div>
       <div class="chips">${quick}</div>
       <button class="btn primary block" type="submit">기록하기</button>
-    </form>
+    </form>`;
+  return `<section class="card">
+    <h2>활동 기록</h2>
+    <p class="sub">${areas.length ? '무엇을 얼마나 했는지 남겨요. 타이머를 쓰면 자동으로 기록돼요.' : '무엇을 기록할지 먼저 만들어요. 이름과 동그라미 색을 골라주세요.'}</p>
+    <div class="stack">
+      ${areas.length ? `<div class="chips" role="group" aria-label="영역">${chips}${add}</div>` : ''}
+      ${open ? areaMaker(state, areas) : !areas.length ? full : ''}
+      ${areas.length ? form : ''}
+    </div>
   </section>`;
 }
 
@@ -213,11 +259,33 @@ export function render(state) {
       <div data-slot="week">${weekCard(state, areas, today)}</div>
     </div>
     <div>${sleepForm(state, day)}</div>
-    ${entryCard(areas, today)}
+    ${entryCard(state, areas, today)}
     ${todayCard(state, today)}`;
 }
 
 export const label = () => fmtLong(todayKey());
+
+function saveArea() {
+  const label = maker.label.trim();
+  if (!label) {
+    document.querySelector('[data-maker="label"]')?.focus();
+    toast('이름을 먼저 적어주세요');
+    return false;
+  }
+  const free = freeColors(getState());
+  const id = addArea({ label, kind: maker.kind, color: free.includes(maker.color) ? maker.color : free[0] });
+  if (!id) {
+    refresh(); // 다른 탭에서 자리를 채웠을 수 있다
+    toast(`영역은 최대 ${MAX_AREAS}개까지 만들 수 있어요`);
+    return false;
+  }
+  maker = { ...NEW_AREA };
+  draft.areaId = id;
+  document.activeElement?.blur(); // 키보드를 내린다
+  refresh();
+  savedToast(`'${label}' 영역을 만들었어요`);
+  return true;
+}
 
 export const on = {
   async click(e) {
@@ -247,19 +315,46 @@ export const on = {
     else if (action === 'pick-area') {
       draft.areaId = id;
       refresh();
+    } else if (action === 'maker-open') {
+      maker.open = true;
+      refresh();
+      document.querySelector('[data-maker="label"]')?.focus();
+    } else if (action === 'maker-close') {
+      maker = { ...NEW_AREA };
+      refresh();
+      document.querySelector('[data-action="maker-open"]')?.focus({ preventScroll: true });
+    } else if (action === 'maker-color') {
+      maker.color = Number(value);
+      refresh();
+    } else if (action === 'maker-kind') {
+      maker.kind = value;
+      refresh();
+    } else if (action === 'maker-save') {
+      const { left, top, width, height } = button.getBoundingClientRect();
+      if (!saveArea()) return;
+      // 두 번 누르면 두 번째 탭이 만들기 자리에 새로 나타난 칸을 누른다. 그 칸만 잠깐 막는다.
+      const under = document.elementFromPoint(left + width / 2, top + height / 2)?.closest('.field, button, a');
+      if (under) {
+        under.style.pointerEvents = 'none';
+        setTimeout(() => under.style.removeProperty('pointer-events'), 400);
+      }
     } else if (action === 'quick') {
       const input = button.form.elements.minutes;
       draft.minutes = String((Number(input.value) || 0) + Number(value));
       input.value = draft.minutes;
     } else if (action === 'clear-sample' && (await ask('샘플 데이터와 그동안 직접 남긴 기록까지 모두 지워져요. 지우고 새로 시작할까요?', '모두 지우기'))) {
-      resetSleepForm();
+      resetTodayDrafts();
       resetState({ keepTheme: true });
       savedToast('깨끗하게 비웠어요. 오늘부터 시작해봐요!');
     }
   },
+  keydown(e) {
+    if (e.target.dataset.maker === 'label' && e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) saveArea(); // 229: 한글 조합을 마치는 Enter
+  },
   input(e) {
     const key = e.target.dataset.draft;
     if (key) draft[key] = e.target.value;
+    else if (e.target.dataset.maker === 'label') maker.label = e.target.value;
     // 메모는 글자마다 저장해, 입력 중에 앱을 벗어나거나 화면을 다시 그려도 남게 한다
     else if ('note' in e.target.dataset) setCheckin(pickedDay(), { note: e.target.value.trim() }, { quiet: true });
   },

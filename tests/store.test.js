@@ -174,9 +174,9 @@ test('저장 실패 중에 남긴 표시는 다시 적용해도 하나다', asyn
 
 test('다른 탭이 영역을 채우면 추가에 실패했다고 알려준다', async () => {
   const base = seeded();
-  base.areas = [1, 2, 3, 4, 5, 6].map((color) => ({ id: `a${color}`, label: `영역${color}`, emoji: '✨', goal: 0, kind: 'load', color }));
+  base.areas = [1, 2, 3, 4, 5, 6, 7, 8].map((color) => ({ id: `a${color}`, label: `영역${color}`, emoji: '✨', goal: 0, kind: 'load', color }));
   const { store } = await boot(base);
-  assert.equal(store.addArea({ label: '하나 더', emoji: '✨', goal: 0, kind: 'load' }), false);
+  assert.equal(store.addArea({ label: '하나 더', emoji: '✨', goal: 0, kind: 'load' }), null);
 });
 
 test('기록만 비울 때는 고른 테마를 남기고, 모두 지우면 기본값으로 돌아간다', async () => {
@@ -201,4 +201,21 @@ test('브라우저에서는 앱으로 보내는 일 없이 저장한다', async 
   const { store, disk } = await boot(seeded());
   add(store, 15);
   assert.equal(disk().entries.length, 2);
+});
+
+test('새 영역은 고른 색으로 만들고, 다른 영역이 쓰는 색으로는 바꾸지 않는다', async () => {
+  const { store, disk } = await boot(seeded());
+  const id = store.addArea({ label: '독서', kind: 'recovery', color: 5 });
+  assert.equal(disk().areas.find((a) => a.id === id).color, 5);
+  assert.equal(store.addArea({ label: '같은 색', color: 5 }) !== null, true);
+  assert.notEqual(disk().areas.at(-1).color, 5);
+  store.updateArea(id, { color: 1 }); // 1번은 seeded의 '일'이 쓰고 있다
+  assert.equal(disk().areas.find((a) => a.id === id).color, 5);
+  store.updateArea(id, { color: 9, label: '책' });
+  assert.deepEqual([disk().areas.find((a) => a.id === id).color, disk().areas.find((a) => a.id === id).label], [9, '책']);
+});
+
+test('처음 시작하면 영역이 비어 있다', async () => {
+  const { store } = await boot(null);
+  assert.deepEqual(store.getState().areas, []);
 });

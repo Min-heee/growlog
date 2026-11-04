@@ -3,21 +3,17 @@ import { fromKey } from './dates.js';
 import { sendToApp, uid } from './util.js';
 
 const KEY = 'growlog:v1';
-export const MAX_AREAS = 6; // 색 1~6번은 활동 영역, 7번은 수면에 고정
+export const MAX_AREAS = 8;
+export const AREA_COLORS = 10; // 영역마다 1~10번 색 가운데 하나를 고른다. 영역끼리는 겹치지 않는다
+const COLOR_IDS = Array.from({ length: AREA_COLORS }, (_, i) => i + 1);
 export const MARK_TAGS = ['일', '공부', '관계', '건강', '기타'];
 const ROLES = ['worker', 'student', 'other'];
 const AGES = ['adult', 'u18', 'senior'];
 
-const DEFAULT_AREAS = [
-  { id: 'exercise', label: '운동', emoji: '🏃', goal: 150, kind: 'recovery', color: 1 },
-  { id: 'study', label: '공부', emoji: '📚', goal: 420, kind: 'load', color: 2 },
-  { id: 'dev', label: '개발', emoji: '💻', goal: 600, kind: 'load', color: 3 },
-];
-
 export function createDefaultState() {
   return {
     version: 1,
-    areas: DEFAULT_AREAS.map((a) => ({ ...a, archived: false })),
+    areas: [], // 무엇을 기록할지는 사용자가 직접 만든다
     entries: [], // { id, date, areaId, minutes, title, source: 'manual'|'timer', createdAt }
     sleep: {}, // 일어난 날짜 → { bed, wake, quality }
     checkins: {}, // 날짜 → { energy, stress, mood, detach, note }
@@ -61,11 +57,11 @@ function cleanAreas(list) {
       emoji: text(a.emoji, 16) || '✨',
       goal: Math.min(10080, Math.round(number(a.goal, 0, Number.MAX_VALUE) ?? 0)),
       kind: a.kind === 'recovery' ? 'recovery' : 'load',
-      color: number(a.color, 1, MAX_AREAS),
+      color: number(a.color, 1, AREA_COLORS),
       archived: a.archived === true,
     }));
   const used = new Set();
-  const free = () => [1, 2, 3, 4, 5, 6].find((c) => !used.has(c) && !areas.some((a) => a.color === c));
+  const free = () => COLOR_IDS.find((c) => !used.has(c) && !areas.some((a) => a.color === c));
   for (const area of areas) {
     if (!Number.isInteger(area.color) || used.has(area.color)) area.color = free();
     used.add(area.color);
@@ -305,20 +301,26 @@ export const setSupportSeen = () =>
 // ---- 활동 영역 ----
 export const canAddArea = (s = state) => s.areas.length < MAX_AREAS;
 
-export function addArea({ label, emoji, goal, kind }) {
-  const free = (s) => [1, 2, 3, 4, 5, 6].find((c) => !s.areas.some((a) => a.color === c));
-  if (!free(state)) return false;
+/** 다른 영역이 쓰지 않는 색. except 영역의 지금 색은 비어 있는 것으로 본다 */
+export const freeColors = (s = state, except = null) => COLOR_IDS.filter((c) => !s.areas.some((a) => a.color === c && a.id !== except));
+
+/** 새 영역을 만들고 id를 돌려준다. 자리가 없으면 null */
+export function addArea({ label, emoji = '✨', goal = 0, kind = 'load', color }) {
+  if (!canAddArea()) return null;
   const id = uid();
   commit((s) => {
-    const color = free(s);
-    if (color) s.areas.push({ id, label, emoji, goal, kind, color, archived: false });
+    const free = freeColors(s);
+    if (s.areas.length < MAX_AREAS && free.length) s.areas.push({ id, label, emoji, goal, kind, color: free.includes(color) ? color : free[0], archived: false });
   });
-  return true;
+  return areaById(id) ? id : null;
 }
-export const updateArea = (id, patch, opts) =>
+/** 색은 다른 영역이 쓰고 있지 않을 때만 바꾼다 */
+export const updateArea = (id, { color, ...patch }, opts) =>
   commit((s) => {
     const area = areaById(id, s);
-    if (area) Object.assign(area, patch);
+    if (!area) return;
+    Object.assign(area, patch);
+    if (color !== undefined && freeColors(s, id).includes(color)) area.color = color;
   }, opts);
 export const removeArea = (id) =>
   commit((s) => {

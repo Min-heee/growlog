@@ -1,6 +1,6 @@
 // 여러 화면이 함께 쓰는 UI 조각: 다시 그리기, 토스트, 툴팁, 평점 버튼, 기록 목록
 import { getTip } from './charts.js';
-import { hasSaveFailed } from './store.js';
+import { AREA_COLORS, hasSaveFailed } from './store.js';
 import { esc, fmtHM } from './util.js';
 
 let refresher = () => {};
@@ -11,6 +11,16 @@ export const setRefresher = (fn) => {
 export const refresh = (opts) => refresher(opts);
 
 export const areaColor = (area) => `var(--s${area?.color ?? 0})`;
+
+const COLOR_NAMES = ['라임', '하늘', '보라', '주황', '분홍', '청록', '파랑', '빨강', '노랑', '회색'];
+/** 영역 색 고르기. 다른 영역이 쓰는 색은 누를 수 없다. id가 있으면 버튼에 data-id로 붙인다. */
+export function colorChoices(selected, free, action, id = '') {
+  const buttons = Array.from({ length: AREA_COLORS }, (_, i) => i + 1).map((c) => {
+    const taken = c !== selected && !free.includes(c);
+    return `<button type="button" class="swatch-btn" data-action="${action}"${id ? ` data-id="${esc(id)}"` : ''} data-value="${c}" style="--c:var(--s${c})" aria-pressed="${c === selected}" aria-label="${COLOR_NAMES[c - 1]}${taken ? ' (다른 영역이 쓰는 중)' : ''}"${taken ? ' disabled' : ''}></button>`;
+  });
+  return `<div class="swatches" role="group" aria-label="동그라미 색">${buttons.join('')}</div>`;
+}
 
 /** 1~5점 버튼 묶음. { field, label, low, high }, 지금 값, 눌렀을 때의 data-action */
 export function ratingScale({ field, label, low, high }, value, action) {

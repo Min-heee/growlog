@@ -1,8 +1,9 @@
 // 집중 타이머: 포모도로·스톱워치. 시작 시각을 저장해두어 새로고침하거나 다른 화면으로 가도 이어진다.
-import { activeAreas, addEntry, areaById, getState } from '../store.js';
+import { activeAreas, addEntry, areaById, canAddArea, getState } from '../store.js';
 import { toKey, todayKey } from '../dates.js';
 import { esc, fmtHM, isNativeApp, sendToApp, sum } from '../util.js';
 import { areaColor, entryList, refresh, savedToast, toast } from '../ui.js';
+import { openAreaMaker } from './today.js';
 
 const KEY = 'growlog:timer';
 const PRESETS = [
@@ -404,7 +405,9 @@ function actions(area, sessions) {
   if (t.phase === 'paused') return tile('resume', '계속하기', 'primary', 'resume') + tile('finish', '끝내고 기록', '', 'finish') + rest;
   if (t.phase === 'break') return wide('skip-break', '휴식 건너뛰기');
   if (t.finished) return area ? tile('break', `${preset().rest}분 휴식`, 'primary', 'rest') + tile('start', '다음 세션', '', 'resume') : wide('break', `${preset().rest}분 휴식`);
-  return area ? wide('start', '시작') : '<a class="act wide" href="#/settings">영역을 먼저 추가해주세요</a>';
+  if (area) return wide('start', '시작');
+  // 숨긴 영역도 자리를 차지하므로, 자리가 없으면 설정에서 되살리게 한다
+  return canAddArea() ? wide('make-area', '영역을 먼저 만들어주세요') : '<a class="act wide" href="#/settings">숨긴 영역을 되살려주세요</a>';
 }
 
 export function label(state) {
@@ -446,7 +449,7 @@ export function render(state) {
       <h2>무엇에 집중하나요?</h2>
       <p class="sub">세션이 끝나면 고른 영역에 자동으로 기록돼요.</p>
       <div class="stack">
-        <div class="chips" role="group" aria-label="영역">${chips}</div>
+        ${areas.length ? `<div class="chips" role="group" aria-label="영역">${chips}</div>` : '<p class="sub flush">영역이 있어야 타이머를 시작하고 기록할 수 있어요.</p>'}
         <label class="field"><span>할 일</span><input data-timer-title maxlength="60" value="${esc(t.title)}" placeholder="예: 알고리즘 문제 2개"></label>
       </div>
     </section>
@@ -459,7 +462,10 @@ export function render(state) {
 export const on = {
   click(e) {
     const button = e.target.closest('[data-action]');
-    if (button) act(button.dataset.action, button.dataset.value ?? button.dataset.id);
+    if (button?.dataset.action === 'make-area') {
+      openAreaMaker();
+      location.hash = '#/today';
+    } else if (button) act(button.dataset.action, button.dataset.value ?? button.dataset.id);
   },
   input(e) {
     if ('timerTitle' in e.target.dataset) {

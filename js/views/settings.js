@@ -1,12 +1,12 @@
 // 설정 화면: 활동 영역·주간 목표, 수면 목표, 테마, 백업
-import { addArea, areaById, canAddArea, canRead, createDefaultState, getState, isBackup, MAX_AREAS, normalize, removeArea, replaceState, resetState, setProfile, setSleepGoal, setTheme, updateArea } from '../store.js';
+import { addArea, areaById, canAddArea, canRead, createDefaultState, freeColors, getState, isBackup, MAX_AREAS, normalize, removeArea, replaceState, resetState, setProfile, setSleepGoal, setTheme, updateArea } from '../store.js';
 import { exportData } from '../backup.js';
 import { buildSample } from '../sample.js';
 import { installState, promptInstall } from '../pwa.js';
-import { resetSleepForm } from './today.js';
+import { resetTodayDrafts } from './today.js';
 import { resetTimer } from './timer.js';
 import { clamp, esc, isNativeApp } from '../util.js';
-import { areaColor, ask, fieldSavedToast, fieldToast, refresh, savedToast, toast } from '../ui.js';
+import { areaColor, ask, colorChoices, fieldSavedToast, fieldToast, refresh, savedToast, toast } from '../ui.js';
 
 const THEMES = [
   ['dark', '다크'],
@@ -28,15 +28,19 @@ const AGES = [
 const kindOptions = (kind) =>
   `<option value="load"${kind === 'load' ? ' selected' : ''}>부하</option><option value="recovery"${kind === 'recovery' ? ' selected' : ''}>회복</option>`;
 
-function areaRow(a) {
+let colorOpen = null; // 색을 고르는 중인 영역
+
+function areaRow(a, state) {
   const id = esc(a.id);
   const name = esc(a.label);
+  const colors = colorOpen === a.id ? `<div class="area-colors" id="colors-${id}">${colorChoices(a.color, freeColors(state, a.id), 'area-color', a.id)}</div>` : '';
   return `<div class="area-row">
     <input class="emoji-in" data-area-field="emoji" data-id="${id}" value="${esc(a.emoji)}" maxlength="8" aria-label="${name} 아이콘">
-    <div class="name-in"><span class="dot" style="background:${areaColor(a)}"></span><input data-area-field="label" data-id="${id}" value="${name}" maxlength="12" aria-label="영역 이름"></div>
+    <div class="name-in"><button type="button" class="dot-btn" data-action="area-color-open" data-id="${id}" aria-expanded="${colorOpen === a.id}"${colors ? ` aria-controls="colors-${id}"` : ''} aria-label="${name} 색 바꾸기"><span class="dot" style="background:${areaColor(a)}"></span></button><input data-area-field="label" data-id="${id}" value="${name}" maxlength="12" aria-label="영역 이름"></div>
     <label class="suffix-in"><input type="number" data-area-field="goal" data-id="${id}" min="0" max="10080" step="10" value="${a.goal}" aria-label="${name} 주간 목표"><span>분/주</span></label>
     <select data-area-field="kind" data-id="${id}" aria-label="${name} 계산 방식">${kindOptions(a.kind)}</select>
     <button type="button" class="btn small ghost" data-action="hide-area" data-id="${id}">숨기기</button>
+    ${colors}
   </div>`;
 }
 
@@ -50,16 +54,21 @@ function hiddenRow(a, state) {
 }
 
 // 입력 중인 내용은 화면을 다시 그려도 남아 있어야 한다
-const EMPTY_DRAFT = { emoji: '', label: '', goal: '120', kind: 'recovery' };
+const EMPTY_DRAFT = { emoji: '', label: '', goal: '120', kind: 'recovery', color: null };
 let draft = { ...EMPTY_DRAFT };
 
-const addForm = () => `<form class="area-row add" data-form="add-area">
+const addForm = (state) => {
+  const free = freeColors(state);
+  const color = free.includes(draft.color) ? draft.color : free[0];
+  return `<form class="area-row add" data-form="add-area">
   <input class="emoji-in" name="emoji" maxlength="8" value="${esc(draft.emoji)}" placeholder="📖" aria-label="새 영역 아이콘">
   <div class="name-in"><input name="label" maxlength="12" value="${esc(draft.label)}" placeholder="새 영역 (예: 독서)" aria-label="새 영역 이름"></div>
   <label class="suffix-in"><input type="number" name="goal" min="0" max="10080" step="10" value="${esc(draft.goal)}" aria-label="새 영역 주간 목표"><span>분/주</span></label>
   <select name="kind" aria-label="새 영역 계산 방식">${kindOptions(draft.kind)}</select>
   <button type="submit" class="btn small primary">추가</button>
+  <div class="area-colors">${colorChoices(color, free, 'draft-color')}</div>
 </form>`;
+};
 
 function installBody() {
   const why = '홈 화면에 추가하면 주소창 없이 앱처럼 열리고, 인터넷이 없어도 쓸 수 있어요.';
@@ -104,6 +113,7 @@ export const label = () => '설정';
 
 export function render(state) {
   const active = state.areas.filter((a) => !a.archived);
+  if (!active.some((a) => a.id === colorOpen)) colorOpen = null; // 숨기거나 지운 영역의 색 고르기는 닫는다
   const hidden = state.areas.filter((a) => a.archived);
   const themes = THEMES.map(([value, label]) => `<button type="button" class="seg-btn" data-action="theme" data-value="${value}" aria-pressed="${state.theme === value}">${label}</button>`).join('');
   const limit = `<p class="hint">영역은 최대 ${MAX_AREAS}개까지 만들 수 있어요.${hidden.length ? ' 숨긴 영역을 삭제하면 자리가 생겨요.' : ''}</p>`;
@@ -118,8 +128,8 @@ export function render(state) {
     <section class="card">
       <h2>활동 영역과 주간 목표</h2>
       <p class="sub"><b>부하</b>는 공부·일처럼 에너지를 쓰는 활동, <b>회복</b>은 운동·산책처럼 에너지를 채우는 활동이에요. 부하와 회복을 계산할 때 쓰여요.</p>
-      ${active.map(areaRow).join('')}
-      ${canAddArea(state) ? addForm() : limit}
+      ${active.map((a) => areaRow(a, state)).join('')}
+      ${canAddArea(state) ? addForm(state) : limit}
       ${hidden.length ? `<h3 class="mini-title">숨긴 영역</h3>${hidden.map((a) => hiddenRow(a, state)).join('')}` : ''}
     </section>
     ${profileCard(state.profile)}
@@ -170,6 +180,7 @@ async function importData() {
   const note = skipped ? ` 형식이 잘못된 기록 ${skipped}개는 빼고 불러와요.` : '';
   if (!(await ask(`백업 파일로 지금 데이터를 덮어쓸까요?${note}`, '덮어쓰기'))) return;
   const before = getState();
+  resetTodayDrafts();
   replaceState(data);
   savedToast('백업을 불러왔어요', { label: '되돌리기', onClick: () => replaceState(before) });
 }
@@ -182,6 +193,7 @@ function hasUserData() {
 
 async function loadSample() {
   if (hasUserData() && !(await ask('지금 기록과 영역 설정을 샘플 데이터로 바꿀까요? 기존 내용은 사라져요.', '바꾸기'))) return;
+  resetTodayDrafts();
   replaceState({ ...buildSample(), theme: getState().theme });
   savedToast('14주치 샘플 데이터를 넣었어요');
   location.hash = '#/today';
@@ -202,7 +214,17 @@ export const on = {
     if (!button) return;
     const { action, id, value } = button.dataset;
     if (['remove-area', 'sample', 'reset'].includes(action) && !canRead()) return toast(UNREADABLE);
-    if (action === 'hide-area') {
+    if (action === 'area-color-open') {
+      colorOpen = colorOpen === id ? null : id;
+      refresh();
+    } else if (action === 'area-color') {
+      colorOpen = null;
+      updateArea(id, { color: Number(value) });
+      document.querySelector(`[data-action="area-color-open"][data-id="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
+    } else if (action === 'draft-color') {
+      draft.color = Number(value);
+      refresh();
+    } else if (action === 'hide-area') {
       updateArea(id, { archived: true });
       savedToast('영역을 숨겼어요. 기록은 그대로 남아요.');
     } else if (action === 'restore-area') updateArea(id, { archived: false });
@@ -223,7 +245,7 @@ export const on = {
     else if (action === 'sample') loadSample();
     else if (action === 'reset' && (await ask('모든 기록과 설정을 지울까요? 되돌릴 수 없어요.', '모두 지우기'))) {
       resetTimer();
-      resetSleepForm();
+      resetTodayDrafts();
       resetState();
       savedToast('모두 지웠어요');
     }
@@ -274,7 +296,7 @@ export const on = {
       document.activeElement?.blur(); // 키보드에 가려지지 않도록
       return toast('영역 이름을 입력해주세요');
     }
-    const area = { label: name, emoji: emoji.value.trim() || '✨', goal: clamp(Math.round(Number(goal.value) || 0), 0, 10080), kind: kind.value };
+    const area = { label: name, emoji: emoji.value.trim() || '✨', goal: clamp(Math.round(Number(goal.value) || 0), 0, 10080), kind: kind.value, color: draft.color };
     draft = { ...EMPTY_DRAFT };
     if (addArea(area)) savedToast(`'${name}' 영역을 추가했어요`);
     else {

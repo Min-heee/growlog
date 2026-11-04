@@ -3,6 +3,12 @@ import { createDefaultState } from './store.js';
 import { addDays, fromKey, todayKey, weekStartKey } from './dates.js';
 import { uid } from './util.js';
 
+const SAMPLE_AREAS = [
+  { id: 'exercise', label: '운동', emoji: '🏃', goal: 150, kind: 'recovery', color: 1 },
+  { id: 'study', label: '공부', emoji: '📚', goal: 420, kind: 'load', color: 2 },
+  { id: 'dev', label: '개발', emoji: '💻', goal: 600, kind: 'load', color: 3 },
+];
+
 const TITLES = {
   exercise: ['러닝 5km', '헬스 하체', '요가', '동네 산책', '수영'],
   study: ['영어 단어 50개', '알고리즘 문제 풀이', '책 읽기: 클린 코드', '온라인 강의 수강', '자격증 기출 풀기'],
@@ -35,6 +41,7 @@ export function buildSample(days = 98) {
   };
 
   const state = createDefaultState();
+  state.areas = SAMPLE_AREAS.map((a) => ({ ...a, archived: false }));
   state.sample = true;
   state.supportSeen = Date.now(); // 샘플에서 도움 안내가 뜨지 않게 한다
   const today = todayKey();
