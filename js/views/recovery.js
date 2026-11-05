@@ -27,6 +27,7 @@ const BAND_NOTE = {
 const CLOSED_FORM = { open: false, date: '', closedOn: '', fuzz: 0, sev: null, tag: null };
 let form = { ...CLOSED_FORM };
 let chart = null; // 차트를 다시 그릴 때 쓰는 데이터
+let weekShown = ''; // 이번 주 돌아보기를 그린 날. 자정을 넘겨 눌러도 화면에 보이는 주에 저장한다
 
 /** 오늘 화면에서 '지친 날로 표시'를 눌렀을 때 표시 칸을 열어둔다 */
 export function openMarkForm(date) {
@@ -284,6 +285,7 @@ function diaryCard(state, today) {
 
 function weeklyCard(state, i, today) {
   if (i.entries < 14) return '';
+  weekShown = today;
   const week = weekStartKey(today);
   const answer = state.weekly[week] || {};
   const word = WORK_WORD[state.profile.role];
@@ -468,9 +470,9 @@ export const on = {
     } else if (action === 'mark-close') finishMarks(id.split(','));
     else if (action === 'mark-delete') removeMarks(id.split(',').filter(Boolean), button.dataset.weeks.split(',').filter(Boolean));
     else if (action === 'weekly') {
-      const today = todayKey();
+      const day = weekShown || todayKey();
       // 쌓인 정도에 답한 날만 표시 날짜로 남긴다. 다른 칸을 나중에 답해도 날짜가 옮겨가지 않게 한다.
-      setWeekly(weekStartKey(today), field === 'built' ? { built: Number(value), on: today } : { [field]: Number(value) });
+      setWeekly(weekStartKey(day), field === 'built' ? { built: Number(value), on: day } : { [field]: Number(value) });
     } else if (action === 'support-close') setSupportSeen();
     else if (action === 'rebase' && (await ask('내일부터 평소를 새로 계산할까요? 지금까지의 기록은 그대로 남아요.', '새로 계산'))) {
       addRebase(todayKey());

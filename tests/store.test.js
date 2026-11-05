@@ -1,4 +1,4 @@
-// node --test tests/ 로 실행한다. 저장소가 잠깐 막혔다가 돌아오는 경우를 흉내 낸다.
+// node --test 로 실행한다. 저장소가 잠깐 막혔다가 돌아오는 경우를 흉내 낸다.
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -186,6 +186,29 @@ test('기록만 비울 때는 고른 테마를 남기고, 모두 지우면 기�
   assert.deepEqual(store.getState().entries, []);
   store.resetState();
   assert.equal(store.getState().theme, 'dark');
+});
+
+test('샘플만 비울 때는 나에게 맞추기도 남긴다', async () => {
+  const profile = { role: 'student', age: 'u18', hide: true };
+  const { store } = await boot({ ...seeded(), profile });
+  store.resetState({ keepTheme: true, keepProfile: true });
+  assert.deepEqual(store.getState().profile, profile);
+  store.resetState();
+  assert.deepEqual(store.getState().profile, store.createDefaultState().profile);
+});
+
+test('저장 실패 중에 닫은 도움 안내는 다시 적용해도 닫은 시각이 그대로라, 그 뒤에 남긴 심한 표시를 가리지 않는다', async () => {
+  const { store, gate, disk } = await boot(seeded());
+  gate.writes = false;
+  store.setSupportSeen();
+  const seen = store.getState().supportSeen;
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  store.addMark({ date: '2026-10-05', sev: 3, fuzz: 0 });
+  assert.equal(store.getState().supportSeen, seen);
+  gate.writes = true;
+  store.retrySave();
+  assert.equal(disk().supportSeen, seen);
+  assert.ok(disk().marks[0].createdAt > seen);
 });
 
 test('아이폰 앱 안에서는 저장한 내용을 앱에도 그대로 보낸다', async () => {

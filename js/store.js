@@ -340,10 +340,12 @@ export const setProfile = (patch, opts) =>
   commit((s) => {
     s.profile = { ...s.profile, ...patch };
   }, opts);
-export const setSupportSeen = () =>
+export function setSupportSeen() {
+  const at = Date.now(); // 저장에 실패하면 다시 적용될 수 있으니 시각은 변경 밖에서 정한다. 안에서 정하면 다시 적용할 때마다 늦어져 그 뒤에 남긴 표시의 안내를 가린다
   commit((s) => {
-    s.supportSeen = Date.now();
+    s.supportSeen = at;
   });
+}
 
 // ---- 활동 영역 ----
 export const canAddArea = (s = state) => s.areas.length < MAX_AREAS;
@@ -390,5 +392,6 @@ export function replaceState(data) {
   const next = normalize(data);
   commit(() => structuredClone(next));
 }
-/** keepTheme: 기록만 비우는 경우. 고른 화면 테마까지 몰래 되돌리지 않는다. */
-export const resetState = ({ keepTheme = false } = {}) => commit((s) => ({ ...createDefaultState(), ...(keepTheme && { theme: s.theme }) }));
+/** keepTheme, keepProfile: 기록만 비우는 경우. 고른 화면 테마와 나에게 맞추기까지 몰래 되돌리지 않는다. */
+export const resetState = ({ keepTheme = false, keepProfile = false } = {}) =>
+  commit((s) => ({ ...createDefaultState(), ...(keepTheme && { theme: s.theme }), ...(keepProfile && { profile: { ...s.profile } }) }));

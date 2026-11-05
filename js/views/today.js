@@ -357,7 +357,7 @@ export const on = {
       input.value = draft.minutes;
     } else if (action === 'clear-sample' && (await ask('샘플 데이터와 그동안 직접 남긴 기록까지 모두 지워져요. 지우고 새로 시작할까요?', '모두 지우기'))) {
       resetTodayDrafts();
-      resetState({ keepTheme: true });
+      resetState({ keepTheme: true, keepProfile: true });
       savedToast('깨끗하게 비웠어요. 오늘부터 시작해봐요!');
     }
   },

@@ -198,7 +198,7 @@ function hasUserData() {
 async function loadSample() {
   if (hasUserData() && !(await ask('지금 기록과 영역 설정을 샘플 데이터로 바꿀까요? 기존 내용은 사라져요.', '바꾸기'))) return;
   resetTodayDrafts();
-  replaceState({ ...buildSample(), theme: getState().theme });
+  replaceState({ ...buildSample(), theme: getState().theme, profile: getState().profile }); // 고른 테마와 나에게 맞추기(추정 숨기기 포함)는 몰래 바꾸지 않는다
   savedToast('14주치 샘플 데이터를 넣었어요');
   location.hash = '#/today';
 }

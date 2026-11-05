@@ -1,7 +1,7 @@
-// node --test tests/ 로 실행한다
+// node --test 로 실행한다
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { addDays, todayKey, weekStartKey } from '../js/dates.js';
+import { addDays, fromKey, todayKey, weekStartKey } from '../js/dates.js';
 import { insight } from '../js/insight.js';
 import { buildSample } from '../js/sample.js';
 import { createDefaultState, isBackup, normalize } from '../js/store.js';
@@ -109,6 +109,36 @@ test('18세 미만에게는 성인 권장 수면을 말하지 않는다', () => 
   for (let i = 0; i < 7; i++) state.sleep[addDays(TODAY, -i)] = { bed: '00:00', wake: '06:30' };
   const note = insight(state, TODAY).notes.find((n) => n.includes('평균 수면'));
   assert.match(note, /14~17세/);
+});
+
+test('18세 미만이 필요한 수면을 권장량보다 높게 잡았으면 권장량을 채운 잠을 권장량보다 적다고 하지 않는다', () => {
+  const state = stateWith(10, { profile: { role: 'student', age: 'u18', hide: false }, sleepGoal: 10 });
+  for (let i = 0; i < 7; i++) state.sleep[addDays(TODAY, -i)] = { bed: '22:00', wake: '06:45' }; // 8.75시간
+  const note = insight(state, TODAY).notes.find((n) => n.includes('평균 수면'));
+  assert.ok(note);
+  assert.doesNotMatch(note, /14~17세 권장은 8시간/);
+  assert.match(note, /필요한 수면으로 잡은 10시간보다 적어요/);
+});
+
+/** 기록 시작 back일 전부터 어제까지, 평일마다 minutes(최근 7일은 recent)분씩 일한 기록 */
+function workedSince(state, back, minutes, recent = minutes) {
+  state.areas = [{ id: 'w', label: '일', emoji: '✨', goal: 0, kind: 'load', color: 1, archived: false }];
+  for (let i = 1; i <= back; i++) {
+    const date = addDays(TODAY, -i);
+    const day = fromKey(date).getDay();
+    if (day > 0 && day < 6) state.entries.push({ id: `w${i}`, date, areaId: 'w', minutes: i < 7 ? recent : minutes, title: '', source: 'manual', createdAt: 0 });
+  }
+  return state;
+}
+
+test('컨디션만 남기다 일을 기록하기 시작했으면, 늘 하던 만큼 기록해도 30% 늘었다고 하지 않는다', () => {
+  const state = workedSince(stateWith(130), 35, 480);
+  assert.ok(!insight(state, TODAY).notes.some((n) => n.includes('30%')));
+});
+
+test('12주 넘게 기록한 일이 이번 7일에 크게 늘면 30% 늘었다고 알린다', () => {
+  const state = workedSince(stateWith(130), 120, 240, 480);
+  assert.ok(insight(state, TODAY).notes.some((n) => n.includes('30%')));
 });
 
 test('기록을 멈춘 것을 힘든 날이 이어진 것으로 보지 않는다', () => {
