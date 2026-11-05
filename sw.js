@@ -153,10 +153,13 @@ self.addEventListener('install', (event) => {
   );
 });
 
-/** 열린 창을 모두 새 코드로 다시 연다. 다시 여는 요청은 활성화가 끝나야 처리되므로 끝나기를 기다리지 않는다 */
+/**
+ * 열린 창을 모두 새 코드로 다시 연다. 다시 여는 요청은 활성화가 끝나야 처리되므로 끝나기를 기다리지 않는다.
+ * page.url은 창을 처음 연 주소라 탭을 옮긴 창에서는 # 뒤가 지금과 다르고, # 뒤만 다른 주소로 가면 문서를 다시 읽지 않는다. 그래서 # 앞까지만 연다.
+ */
 async function reloadPages() {
   const pages = await self.clients.matchAll({ type: 'window' });
-  pages.forEach((page) => page.navigate(page.url).catch(() => {}));
+  pages.forEach((page) => page.navigate(page.url.split('#')[0]).catch(() => {}));
 }
 
 self.addEventListener('activate', (event) => {
