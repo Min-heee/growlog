@@ -3,6 +3,8 @@
 운동·공부·개발·수면·회복을 한곳에서 기록하는 자기계발 웹앱의 1차 버전이에요.
 빌드 도구나 라이브러리 없이 HTML/CSS/JavaScript만으로 만들었고, 데이터는 브라우저(localStorage)에 저장돼요.
 
+**써 보기:** https://min-heee.github.io/growlog/ (설치·로그인 없이 열립니다. 기록은 이 브라우저에만 남고, 설정 > 샘플 데이터로 채워 볼 수 있어요)
+
 ## 실행
 
 ES 모듈을 쓰기 때문에 `index.html`을 더블클릭하면 열리지 않아요. 로컬 서버로 열어주세요.
@@ -97,3 +99,5 @@ docs/               계산 근거와 명세
 계산은 저장된 기록만 쓰는 순수 함수(`js/strain.js`)라서, 지난 기록을 고치면 처음부터 다시 계산돼요. 근거 요약은 [docs/evidence.md](docs/evidence.md), 계산 명세 전체는 [docs/model-spec.md](docs/model-spec.md), 조사한 주장과 출처 주소는 [docs/sources.json](docs/sources.json)에 있어요. 진단이나 예측 도구가 아니에요.
 
 테스트는 `node --test tests/`로 돌려요.
+
+코드는 AI 코딩 도구(Claude Code)가 썼고, 무엇을 만들지 정하고 써 보며 고친 것은 제 몫이에요.
