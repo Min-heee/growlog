@@ -188,6 +188,15 @@ test('기록만 비울 때는 고른 테마를 남기고, 모두 지우면 기�
   assert.equal(store.getState().theme, 'dark');
 });
 
+test('샘플만 비울 때는 나에게 맞추기도 남긴다', async () => {
+  const profile = { role: 'student', age: 'u18', hide: true };
+  const { store } = await boot({ ...seeded(), profile });
+  store.resetState({ keepTheme: true, keepProfile: true });
+  assert.deepEqual(store.getState().profile, profile);
+  store.resetState();
+  assert.deepEqual(store.getState().profile, store.createDefaultState().profile);
+});
+
 test('저장 실패 중에 닫은 도움 안내는 다시 적용해도 닫은 시각이 그대로라, 그 뒤에 남긴 심한 표시를 가리지 않는다', async () => {
   const { store, gate, disk } = await boot(seeded());
   gate.writes = false;

@@ -392,5 +392,6 @@ export function replaceState(data) {
   const next = normalize(data);
   commit(() => structuredClone(next));
 }
-/** keepTheme: 기록만 비우는 경우. 고른 화면 테마까지 몰래 되돌리지 않는다. */
-export const resetState = ({ keepTheme = false } = {}) => commit((s) => ({ ...createDefaultState(), ...(keepTheme && { theme: s.theme }) }));
+/** keepTheme, keepProfile: 기록만 비우는 경우. 고른 화면 테마와 나에게 맞추기까지 몰래 되돌리지 않는다. */
+export const resetState = ({ keepTheme = false, keepProfile = false } = {}) =>
+  commit((s) => ({ ...createDefaultState(), ...(keepTheme && { theme: s.theme }), ...(keepProfile && { profile: { ...s.profile } }) }));
