@@ -57,8 +57,10 @@ function savedKind(e) {
 
 /** 수면 안내는 나이와, 안내가 나온 이유인 필요한 수면에 맞춘다 */
 function sleepGuide(state, need) {
-  if (state.profile.age === 'u18') return '14~17세 권장은 8시간 이상이에요.';
-  return need > 7.5 ? `필요한 수면으로 잡은 ${fmtHours(need)}보다 적어요.` : '성인 권장은 7시간 이상이에요.';
+  const u18 = state.profile.age === 'u18';
+  // 필요한 수면을 권장량보다 높게 잡아서 나온 안내라면 권장량이 아니라 그 필요한 수면을 말한다. 권장량을 채운 잠에 권장량을 말하면 앞뒤가 맞지 않는다
+  if (need > (u18 ? 8.5 : 7.5)) return `필요한 수면으로 잡은 ${fmtHours(need)}보다 적어요.`;
+  return u18 ? '14~17세 권장은 8시간 이상이에요.' : '성인 권장은 7시간 이상이에요.';
 }
 
 function contextNotes(state, ctx) {

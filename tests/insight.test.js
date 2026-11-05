@@ -111,6 +111,15 @@ test('18세 미만에게는 성인 권장 수면을 말하지 않는다', () => 
   assert.match(note, /14~17세/);
 });
 
+test('18세 미만이 필요한 수면을 권장량보다 높게 잡았으면 권장량을 채운 잠을 권장량보다 적다고 하지 않는다', () => {
+  const state = stateWith(10, { profile: { role: 'student', age: 'u18', hide: false }, sleepGoal: 10 });
+  for (let i = 0; i < 7; i++) state.sleep[addDays(TODAY, -i)] = { bed: '22:00', wake: '06:45' }; // 8.75시간
+  const note = insight(state, TODAY).notes.find((n) => n.includes('평균 수면'));
+  assert.ok(note);
+  assert.doesNotMatch(note, /14~17세 권장은 8시간/);
+  assert.match(note, /필요한 수면으로 잡은 10시간보다 적어요/);
+});
+
 test('기록을 멈춘 것을 힘든 날이 이어진 것으로 보지 않는다', () => {
   const state = stateWith(70, { supportSeen: 1 });
   for (let i = 1; i <= 4; i++) state.checkins[addDays(TODAY, -13 - i)] = { energy: 1, stress: 5, mood: 1 };
