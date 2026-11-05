@@ -309,6 +309,7 @@ const METHOD = `<section class="card">
   <details class="table-view method">
     <summary>이 추정은 어떻게 계산하나요</summary>
     <p>하루 기록을 내 평소와 비교해 부하·수면 부족을 더하고, 회복 활동과 쉬어간 정도를 조금 빼요. 그 값을 약 7일 반감기로 천천히 쌓아요. 평소 범위를 벗어나면 <b>평소보다 조금 높아요</b>, 사흘 이상 이어지고 힘든 날도 평소보다 많으면 <b>한동안 평소보다 높아요</b>라고 말해요. 하루 나쁜 날만으로 이 말이 나오지는 않아요.</p>
+    <p><b>부하와 회복 활동</b>은 영역 종류로 나눠요. 해야 하는 일은 기록한 시간을 그대로 부하로 쳐요. 그때그때 달라요로 정한 영역은 기록마다 고른 대로, 채워졌어요면 회복 활동, 지쳤어요면 부하로 치고, 그대로예요면 넣지 않아요. 같은 활동이라도 그 시간에 쉬어졌는지에 따라 달라서예요. 해야 하는 일이던 때 남긴 기록처럼 고른 값이 없는 기록은 부하로 쳐요. 앞뒤 7일 안에 해야 하는 일 기록이 없는 날은 비교할 평소 부하가 없어서, 쌓인 부하를 계산할 때 지쳤어요 시간도 평소와 비교하지 않아요. 하루 12시간, 주 52·55시간, 30% 급증 같은 기록한 시간 메모에는 지쳤어요 시간도 들어가요.</p>
     <p><b>힘든 날</b>은 스트레스 4 이상, 에너지 2 이하, 기분 2 이하 중 두 가지 이상인 날이에요. 기록이 비어 있는 날은 평균으로 채우지 않아요. 4일 이상 끊기면 알 수 없다고 말하고, 14일 이상 끊기면 다시 쌓아요.</p>
     <p><b>'한동안 평소보다 높아요' 기준</b>은 기록으로 확인된 표시가 5번 쌓일 때까지 내 기록으로 옮겨가지 않아요. 두세 번으로는 우연과 구별할 수 없어서예요. '많이 지쳤지만 할 일은 했어요'는 0.5번으로 세요. 다만 표시 없이 지나간 때가 있으면 조금 올라가요.</p>
     <h3>기본값과 근거 강도</h3>
@@ -319,7 +320,8 @@ const METHOD = `<section class="card">
         <tr><td>수면 부족 추세</td><td>7일 평균 6시간 이하, 또는 필요량보다 1시간 이상 적음</td><td>실험 연구, 기준선은 설계 판단</td></tr>
         <tr><td>수면 회복</td><td>하룻밤 최대 1.5시간</td><td>약함</td></tr>
         <tr><td>주 55시간 이상 기록</td><td>건강 메모 (일하는 분만)</td><td>뇌졸중·심장 질환은 강함, 우울은 불확실, 번아웃은 한 시점 조사뿐</td></tr>
-        <tr><td>회복 활동</td><td>주 150분 안내(18세 미만은 하루 60분), 못 채워도 실패가 아니에요</td><td>건강에는 중간, 번아웃에는 입증 안 됨</td></tr>
+        <tr><td>회복 활동</td><td>채워졌어요를 고른 시간. 주 150분(18세 미만은 하루 60분)이면 회복으로 빼는 몫(원래 작아요)을 거의 다 채워요. 못 채워도 실패가 아니에요</td><td>운동은 건강에 중간, 번아웃에는 입증 안 됨. 다른 활동은 근거가 없어 운동 기준을 빌려 써요</td></tr>
+        <tr><td>끝나고 나니</td><td>그때그때 다른 일을 기록할 때마다 골라요</td><td>기록마다 고르는 방식은 앱이 정했어요. 일이 끝난 뒤의 시간에 일에서 벗어난 정도가 지친 정도와 관련 있었다는 연구(직장인 대상, 관련만 확인)를, 회복을 운동 시간만으로 보지 않는 근거로 삼았어요</td></tr>
         <tr><td>에너지·스트레스·기분</td><td>기준치 없음, 내 평소와 비교</td><td>사람마다 달라 인구 기준을 쓰지 않아요</td></tr>
         <tr><td>공부 시간, 쉬는 날 수</td><td>기준치 없음</td><td>근거를 찾지 못했어요</td></tr>
         <tr><td>힘든 날 정의, 평소 범위, 쌓이는 속도</td><td>앱이 정한 값</td><td>관례. 모의 데이터로만 맞췄어요</td></tr>
@@ -327,6 +329,7 @@ const METHOD = `<section class="card">
     </table></div>
     <h3>출처</h3>
     <ul class="sources">
+      <li><a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC5233687/" target="_blank" rel="noopener noreferrer">Wendsche·Lohmann-Haislah 2017, 일에서 벗어남 메타분석</a></li>
       <li><a href="https://www.who.int/news/item/28-05-2019-burn-out-an-occupational-phenomenon-international-classification-of-diseases" target="_blank" rel="noopener noreferrer">WHO 2019, 번아웃의 정의</a></li>
       <li><a href="https://www.cambridge.org/core/journals/epidemiology-and-psychiatric-sciences/article/psychometric-properties-of-burnout-measures-a-systematic-review/D5244F95FF7F2C56C65004C1DDE2608F" target="_blank" rel="noopener noreferrer">Shoman 외 2021, 번아웃 척도 체계적 고찰</a></li>
       <li><a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC4434546/" target="_blank" rel="noopener noreferrer">Watson 외 2015, 성인 수면 합의문</a></li>

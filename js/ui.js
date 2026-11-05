@@ -1,6 +1,6 @@
 // 여러 화면이 함께 쓰는 UI 조각: 다시 그리기, 토스트, 툴팁, 평점 버튼, 기록 목록
 import { getTip } from './charts.js';
-import { AREA_COLORS, hasSaveFailed } from './store.js';
+import { AREA_COLORS, FEELS, hasSaveFailed } from './store.js';
 import { esc, fmtHM } from './util.js';
 
 let refresher = () => {};
@@ -20,6 +20,16 @@ export function colorChoices(selected, free, action, id = '') {
     return `<button type="button" class="swatch-btn" data-action="${action}"${id ? ` data-id="${esc(id)}"` : ''} data-value="${c}" style="--c:var(--s${c})" aria-pressed="${c === selected}" aria-label="${COLOR_NAMES[c - 1]}${taken ? ' (다른 영역이 쓰는 중)' : ''}"${taken ? ' disabled' : ''}></button>`;
   });
   return `<div class="swatches" role="group" aria-label="동그라미 색">${buttons.join('')}</div>`;
+}
+
+export const FEEL_LABELS = { fill: '채워졌어요', same: '그대로예요', drain: '지쳤어요' };
+/** 그때그때 다른 일을 기록할 때 끝나고 어땠는지 고르기. id가 있으면 버튼에 data-id로 붙인다. */
+export function feelChoices(selected, action, id = '') {
+  const buttons = FEELS.map((f) => `<button type="button" class="seg-btn" data-action="${action}"${id ? ` data-id="${esc(id)}"` : ''} data-value="${f}" aria-pressed="${f === selected}">${FEEL_LABELS[f]}</button>`).join('');
+  return `<div class="feel">
+    <div class="scale-head"><span class="scale-label">끝나고 나니</span><span class="scale-hint">쌓인 부하 계산에 쓰여요</span></div>
+    <div class="seg" role="group" aria-label="끝나고 나니">${buttons}</div>
+  </div>`;
 }
 
 /** 1~5점 버튼 묶음. { field, label, low, high }, 지금 값, 눌렀을 때의 data-action */
@@ -69,7 +79,7 @@ function entryItem(entry, area) {
     <span class="dot" style="background:${areaColor(area)}"></span>
     <div class="entry-main">
       <span class="entry-title">${esc(entry.title || area?.label || '기록')}</span>
-      <span class="entry-meta">${esc(where)}${entry.source === 'timer' ? ' · 타이머' : ''}</span>
+      <span class="entry-meta">${esc(where)}${area?.kind === 'varies' && entry.feel ? ` · ${FEEL_LABELS[entry.feel]}` : ''}${entry.source === 'timer' ? ' · 타이머' : ''}</span>
     </div>
     <span class="entry-min">${fmtHM(entry.minutes)}</span>
     <button type="button" class="icon-btn" data-action="delete-entry" data-id="${esc(entry.id)}" aria-label="기록 삭제">${X_ICON}</button>

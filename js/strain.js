@@ -60,19 +60,30 @@ export function tailProb(x, n, a, b) {
 export const isHard = (d) => (num(d.stress) >= 4) + (num(d.energy) <= 2) + (num(d.mood) <= 2) >= 2;
 export const isValid = (e) => finite([num(e.energy), num(e.stress), num(e.mood)]).length >= 2;
 
+/**
+ * 기록 한 개가 어디에 들어가는지. 해야 하는 일(work)은 시간이 곧 부하다.
+ * 그때그때 다른 일은 끝나고 채워졌으면 회복(rec), 지쳤으면 부하(drain), 그대로면 어디에도 넣지 않는다(null).
+ * 고른 값이 없는 기록은 영역을 바꾸기 전에 해야 하는 일로 남긴 것이라 해야 하는 일로 친다.
+ */
+const FEEL_EFFECT = { fill: 'rec', same: null, drain: 'drain' };
+export const effectOf = (area, entry) => (area.kind === 'varies' && Object.hasOwn(FEEL_EFFECT, entry.feel ?? '') ? FEEL_EFFECT[entry.feel] : 'work');
+
 /** 앱 상태를 날짜별 한 줄로 펼친다. 활동을 안 쓰는 사람의 빈 날은 0이 아니라 '모름'으로 둔다. */
 export function dailyLog(state, today) {
-  const kinds = new Map(state.areas.map((a) => [a.id, a.kind]));
-  const load = new Map();
-  const rec = new Map();
+  const areas = new Map(state.areas.map((a) => [a.id, a]));
+  const maps = { work: new Map(), drain: new Map(), rec: new Map(), other: new Map() }; // other: 계산에는 넣지 않지만 기록한 날로는 센다
   for (const e of state.entries) {
-    const kind = kinds.get(e.areaId);
-    if (!kind) continue;
-    const map = kind === 'recovery' ? rec : load;
+    const area = areas.get(e.areaId);
+    if (!area) continue;
+    const map = maps[effectOf(area, e) ?? 'other'];
     map.set(e.date, (map.get(e.date) || 0) + e.minutes);
   }
-  const usesLog = (date) => rangeKeys(addDays(date, 7), 15).some((k) => load.has(k));
-  const dates = new Set([...Object.keys(state.checkins), ...Object.keys(state.sleep), ...load.keys(), ...rec.keys()]);
+  const { work, drain, rec, other } = maps;
+  // 빈 날을 쉰 날로 보는 건 해야 하는 일을 꾸준히 남기는 사람뿐이다. 지쳤어요만으로 판단하면 취미를 안 한 날까지 쉰 날이 되어,
+  // 평소 부하가 0으로 잡히고 오히려 쌓인 부하를 낮춘다.
+  const usesLog = (date) => rangeKeys(addDays(date, 7), 15).some((k) => work.has(k));
+  const loadOf = (date) => (work.get(date) || 0) + (drain.get(date) || 0);
+  const dates = new Set([...Object.keys(state.checkins), ...Object.keys(state.sleep), ...work.keys(), ...drain.keys(), ...rec.keys(), ...other.keys()]);
   return [...dates]
     .filter((date) => date <= today)
     .sort()
@@ -80,8 +91,8 @@ export function dailyLog(state, today) {
       const c = state.checkins[date] || {};
       const night = state.sleep[date] || {};
       // 오늘은 아직 끝나지 않았으니 부하를 빼고 계산한다. 끝난 날은 기록이 없으면 쉰 날이다.
-      const loadMin = date === today ? null : load.get(date) ?? (usesLog(date) ? 0 : null);
-      return { date, energy: c.energy, stress: c.stress, mood: c.mood, detach: c.detach, sleepQ: night.quality, tibH: sleepHours(night.bed, night.wake), loadMin, loadRaw: load.get(date) || 0, recMin: rec.get(date) || 0 };
+      const loadMin = date === today || !usesLog(date) ? null : loadOf(date);
+      return { date, energy: c.energy, stress: c.stress, mood: c.mood, detach: c.detach, sleepQ: night.quality, tibH: sleepHours(night.bed, night.wake), loadMin, loadRaw: loadOf(date), recMin: rec.get(date) || 0, otherMin: other.get(date) || 0 };
     });
 }
 

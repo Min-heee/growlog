@@ -333,8 +333,9 @@ h1 { margin: 0; font-size: 40px; line-height: 1.12; font-weight: 700; letter-spa
 .maker { padding: 16px; border-radius: 20px; background: var(--surface-2); }
 .maker input { background: var(--surface); }
 @media (max-width: 340px) {
-  .maker .seg-btn { padding-inline: 2px; font-size: 14px; white-space: nowrap; }
+  :is(.maker, .feel) .seg-btn { padding-inline: 2px; font-size: 14px; white-space: nowrap; }
 }
+.kind-note { margin: 8px 0 0; }
 .maker .swatch-btn[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--surface-2), 0 0 0 5px var(--ink); }
 .chip {
   display: inline-flex;
@@ -723,8 +724,9 @@ th { color: var(--ink-2); font-weight: 600; }
 .steps + .hint { margin: 12px 0 0; }
 .area-row {
   display: grid;
-  grid-template-areas: "emoji name name name" "goal goal kind act";
-  grid-template-columns: 52px 1fr 96px 60px;
+  /* 이름은 한 줄을 다 쓰고, 종류는 '그때그때 달라요'가 잘리지 않게 넓게 둔다. 보이는 순서는 입력칸 순서와 같다 */
+  grid-template-areas: "emoji name name" "goal goal goal" "kind kind act";
+  grid-template-columns: 52px 1fr 60px;
   align-items: center;
   gap: 8px;
   padding: 12px 0;
@@ -743,8 +745,8 @@ th { color: var(--ink-2); font-weight: 600; }
 .area-row select { grid-area: kind; }
 .area-row > .btn { grid-area: act; padding: 0; }
 .area-row > .btn.ghost { justify-content: flex-end; }
-@media (max-width: 359px) {
-  .area-row { grid-template-areas: "emoji name name" "goal goal goal" "kind kind act"; grid-template-columns: 52px 1fr 60px; }
+@media (min-width: 430px) {
+  .area-row { grid-template-areas: "emoji name name name" "goal goal kind act"; grid-template-columns: 52px 1fr 160px 60px; }
 }
 .hidden-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
 .hidden-row .grow { color: var(--ink-2); font-weight: 600; }

@@ -236,7 +236,7 @@ export function insight(state, today) {
     rebuilding,
     guarded: model.segCount >= K.GUARD_MIN && model.base.every((h) => h.t <= dayNum(today) + 1 - K.GUARD),
     noUsual,
-    savedDays: log.filter((e) => e.energy || e.stress || e.mood || e.detach || e.sleepQ || e.tibH != null || e.loadRaw || e.recMin).length,
+    savedDays: log.filter((e) => e.energy || e.stress || e.mood || e.detach || e.sleepQ || e.tibH != null || e.loadRaw || e.recMin || e.otherMin).length,
     entries,
     gap,
     last,

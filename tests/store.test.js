@@ -205,7 +205,7 @@ test('브라우저에서는 앱으로 보내는 일 없이 저장한다', async 
 
 test('새 영역은 고른 색으로 만들고, 다른 영역이 쓰는 색으로는 바꾸지 않는다', async () => {
   const { store, disk } = await boot(seeded());
-  const id = store.addArea({ label: '독서', kind: 'recovery', color: 5 });
+  const id = store.addArea({ label: '독서', kind: 'varies', color: 5 });
   assert.equal(disk().areas.find((a) => a.id === id).color, 5);
   assert.equal(store.addArea({ label: '같은 색', color: 5 }) !== null, true);
   assert.notEqual(disk().areas.at(-1).color, 5);
@@ -218,4 +218,74 @@ test('새 영역은 고른 색으로 만들고, 다른 영역이 쓰는 색으�
 test('처음 시작하면 영역이 비어 있다', async () => {
   const { store } = await boot(null);
   assert.deepEqual(store.getState().areas, []);
+});
+
+test('예전의 에너지를 채워요 영역은 그때그때 다른 일이 되고, 그동안의 기록은 채워졌어요로 친다', async () => {
+  const base = seeded();
+  base.areas.push({ id: 'run', label: '러닝', emoji: '🏃', goal: 0, kind: 'recovery', color: 2 });
+  base.entries.push({ id: 'r1', date: '2026-10-01', areaId: 'run', minutes: 30 }, { id: 'r2', date: '2026-10-02', areaId: 'run', minutes: 20, feel: 'drain' });
+  const { store, disk } = await boot(base);
+  const state = store.getState();
+  assert.equal(store.areaById('run').kind, 'varies');
+  assert.equal(store.areaById('a').kind, 'load');
+  assert.deepEqual(state.entries.map((e) => e.feel), [undefined, 'fill', 'drain']);
+  add(store, 10); // 저장하면 옮긴 값이 그대로 남는다
+  assert.equal(disk().areas.find((a) => a.id === 'run').kind, 'varies');
+  assert.equal(disk().entries.find((e) => e.id === 'r1').feel, 'fill');
+});
+
+test('모르는 영역 종류는 해야 하는 일로, 모르는 끝나고 나니는 버린다', () => {
+  return boot(null).then(({ store }) => {
+    const state = store.normalize({
+      areas: [{ id: 'x', label: 'x', kind: 'weird' }, { id: 'y', label: 'y', kind: 'varies' }],
+      entries: [{ id: 'e', date: '2026-10-01', areaId: 'y', minutes: 5, feel: 'great' }, { id: 'f', date: '2026-10-01', areaId: 'y', minutes: 5, feel: 'same' }],
+    });
+    assert.deepEqual(state.areas.map((a) => a.kind), ['load', 'varies']);
+    assert.deepEqual(state.entries.map((e) => e.feel), [undefined, 'same']);
+    assert.equal('feel' in state.entries[0], false);
+  });
+});
+
+test('기록에 끝나고 나니를 남기고 고칠 수 있고, 다음 기록은 지난번 값에서 시작한다', async () => {
+  const { store, disk } = await boot(seeded());
+  const area = store.addArea({ label: '게임', kind: 'varies' });
+  assert.equal(store.lastFeel(area), 'same'); // 처음에는 계산에 넣지 않는 값
+  const first = store.addEntry({ date: '2026-10-02', areaId: area, minutes: 60, feel: 'fill', createdAt: 1 });
+  assert.equal(disk().entries.find((e) => e.id === first).feel, 'fill');
+  store.addEntry({ date: '2026-10-03', areaId: area, minutes: 240, feel: 'drain', createdAt: 2 });
+  assert.equal(store.lastFeel(area), 'drain');
+  store.setEntryFeel(first, 'same');
+  store.setEntryFeel(first, 'nope');
+  assert.equal(disk().entries.find((e) => e.id === first).feel, 'same');
+  assert.equal(store.lastFeel(area), 'drain'); // 고친 기록이 아니라 가장 최근 기록을 따른다
+  const plain = store.addEntry({ date: '2026-10-03', areaId: 'a', minutes: 10, feel: 'bogus' });
+  assert.equal('feel' in disk().entries.find((e) => e.id === plain), false);
+  store.updateArea(area, { kind: 'recovery' }); // 예전 값으로는 바꾸지 않는다
+  assert.equal(store.areaById(area).kind, 'varies');
+});
+
+test('예전 채워요 영역은 기록이 없어도 처음 값이 채워졌어요다', async () => {
+  const base = seeded();
+  base.areas.push({ id: 'walk', label: '산책', emoji: '🚶', goal: 0, kind: 'recovery', color: 3 });
+  const { store } = await boot(base);
+  assert.equal(store.lastFeel('walk'), 'fill');
+  const id = store.addArea({ label: '게임', kind: 'varies' });
+  assert.equal(store.lastFeel(id), 'same');
+});
+
+test('더 새 버전 앱이 남긴 기록은 읽지 않고 덮어쓰지도 않는다', async () => {
+  const newer = { ...seeded(), version: 99, areas: [{ id: 'a', label: '일', kind: 'future', color: 1 }] };
+  const { store, disk } = await boot(newer);
+  assert.equal(store.hasSaveFailed(), true);
+  add(store, 15);
+  assert.equal(disk().version, 99);
+  assert.equal(disk().areas[0].kind, 'future');
+  assert.equal(store.hasNewerData(), true);
+  assert.equal(JSON.parse(store.storedText()).version, 99); // 백업은 이 내용을 그대로 남긴다
+  assert.equal(store.isNewer(newer), true);
+  assert.equal(store.isBackup(newer), false);
+  assert.equal(store.isNewer(seeded()), false);
+  assert.equal(store.normalize(seeded()).version, store.VERSION);
+  const { store: fresh } = await boot(seeded());
+  assert.equal(fresh.hasNewerData(), false);
 });

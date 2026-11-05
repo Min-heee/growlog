@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { addDays } from '../js/dates.js';
-import { dailyLog, dayKey, dayNum, derive, K, tailProb } from '../js/strain.js';
+import { dailyLog, dayKey, dayNum, derive, effectOf, K, tailProb } from '../js/strain.js';
 
 const TODAY = '2026-10-31';
 const PROFILE = { role: 'other', age: 'adult', sleepGoal: 7 };
@@ -265,13 +265,13 @@ test('dayKey와 dayNum은 서로 되돌린다', () => {
   assert.equal(dayKey(dayNum('2026-02-28')), '2026-02-28');
 });
 
-test('dailyLog: 활동을 쓰는 사람의 빈 날은 0, 안 쓰는 사람은 모름, 오늘은 뺀다', () => {
+test('dailyLog: 해야 하는 일을 쓰는 사람의 빈 날은 0, 안 쓰는 사람은 모름, 오늘은 뺀다', () => {
   const state = {
-    areas: [{ id: 'dev', kind: 'load' }, { id: 'run', kind: 'recovery' }],
+    areas: [{ id: 'dev', kind: 'load' }, { id: 'run', kind: 'varies' }],
     entries: [
       { date: '2026-10-30', areaId: 'dev', minutes: 120 },
       { date: '2026-10-31', areaId: 'dev', minutes: 60 },
-      { date: '2026-10-30', areaId: 'run', minutes: 30 },
+      { date: '2026-10-30', areaId: 'run', minutes: 30, feel: 'fill' },
       { date: '2026-10-30', areaId: 'gone', minutes: 500 },
     ],
     checkins: { '2026-10-29': { energy: 3, stress: 3 }, '2026-10-30': { energy: 3, stress: 3 }, '2026-10-31': { energy: 3, stress: 3 }, '2026-01-01': { energy: 3, stress: 3 } },
@@ -285,4 +285,62 @@ test('dailyLog: 활동을 쓰는 사람의 빈 날은 0, 안 쓰는 사람은 �
   assert.equal(on('2026-10-29').loadMin, 0);
   assert.equal(on('2026-01-01').loadMin, null);
   assert.equal(on(TODAY).loadMin, null);
+});
+
+test('그때그때 다른 일은 끝나고 나니에 따라 회복, 부하, 어디에도 안 넣음으로 나뉜다', () => {
+  const state = {
+    areas: [{ id: 'dev', kind: 'load' }, { id: 'game', kind: 'varies' }],
+    entries: [
+      { date: '2026-10-28', areaId: 'game', minutes: 60, feel: 'fill' },
+      { date: '2026-10-28', areaId: 'game', minutes: 240, feel: 'drain' },
+      { date: '2026-10-28', areaId: 'dev', minutes: 30, feel: 'fill' }, // 해야 하는 일에는 고른 값을 쓰지 않는다
+      { date: '2026-10-29', areaId: 'game', minutes: 90, feel: 'same' },
+      { date: '2026-10-30', areaId: 'game', minutes: 45 }, // 해야 하는 일이던 때 남긴 기록
+    ],
+    checkins: {},
+    sleep: {},
+  };
+  const log = dailyLog(state, TODAY);
+  const on = (date) => log.find((e) => e.date === date);
+  assert.deepEqual([on('2026-10-28').loadRaw, on('2026-10-28').recMin], [270, 60]);
+  assert.deepEqual([on('2026-10-29').loadRaw, on('2026-10-29').recMin, on('2026-10-29').otherMin], [0, 0, 90]);
+  assert.equal(on('2026-10-29').loadMin, 0); // 앞뒤로 부하 기록이 있으니 쉰 날이다
+  assert.equal(on('2026-10-30').loadRaw, 45);
+  assert.equal(effectOf({ kind: 'varies' }, { feel: 'toString' }), 'work');
+});
+
+/** 36일 컨디션, 마지막 8일은 힘들다. 러닝 40분 한 번을 feel로 남긴다. withWork면 평일마다 해야 하는 일을 기록한다. */
+function feelCase(feel, withWork, extra = () => {}) {
+  const state = { areas: [{ id: 'run', kind: 'varies' }, { id: 'dev', kind: 'load' }], entries: [], checkins: {}, sleep: {} };
+  for (let i = 0; i < 36; i++) {
+    const date = addDays(TODAY, i - 36);
+    state.checkins[date] = i >= 28 ? { energy: 2, stress: 4, mood: 2 } : { energy: 3 + (i % 2), stress: 2 + (i % 3 === 0), mood: 3 + (i % 2) };
+    if (withWork && i % 7 < 5) state.entries.push({ date, areaId: 'dev', minutes: 240 + 30 * (i % 3) });
+  }
+  if (feel) state.entries.push({ date: addDays(TODAY, -4), areaId: 'run', minutes: 40, feel });
+  extra(state);
+  return derive(dailyLog(state, TODAY), [], PROFILE, TODAY).days.filter((d) => d.logged);
+}
+
+test('지쳤어요는 비교할 평소가 없으면 아무것도 바꾸지 않고, 있으면 그날의 부하를 해야 하는 일처럼 늘린다', () => {
+  // 취미만 기록하면 비교할 평소 부하가 없어서 아무것도 바뀌지 않는다
+  const sameOnly = feelCase('same', false);
+  feelCase('drain', false).forEach((d, i) => assert.equal(d.U, sameOnly[i].U));
+  // 해야 하는 일을 기록하면 지친 날의 부하와 그날의 쌓인 값이 늘어난다. 기록한 날과 모르는 날은 바뀌지 않는다.
+  // 그 뒤의 날은 평소에 그날이 들어가 조금 낮아질 수 있는데, 같은 시간을 해야 하는 일로 남겨도 똑같다.
+  const same = feelCase('same', true);
+  const drain = feelCase('drain', true);
+  const day = drain.findIndex((d) => d.loadMin === 340);
+  assert.ok(day > 0);
+  assert.ok(drain[day].U > same[day].U && drain[day].S > same[day].S);
+  drain.forEach((d, i) => assert.equal(d.loadMin == null, same[i].loadMin == null));
+  const asWork = feelCase(null, true, (state) => state.entries.push({ date: addDays(TODAY, -4), areaId: 'dev', minutes: 40 }));
+  drain.forEach((d, i) => assert.equal(d.U, asWork[i].U));
+});
+
+test('해야 하는 일을 기록하지 않으면 지쳤어요만으로 빈 날을 쉰 날로 치지 않는다', () => {
+  const log = dailyLog({ areas: [{ id: 'run', kind: 'varies' }], entries: [{ date: '2026-10-27', areaId: 'run', minutes: 40, feel: 'drain' }], checkins: { '2026-10-26': { energy: 3, stress: 3 } }, sleep: {} }, TODAY);
+  assert.equal(log.find((e) => e.date === '2026-10-26').loadMin, null);
+  assert.equal(log.find((e) => e.date === '2026-10-27').loadMin, null);
+  assert.equal(log.find((e) => e.date === '2026-10-27').loadRaw, 40); // 기록한 시간 메모에는 들어간다
 });

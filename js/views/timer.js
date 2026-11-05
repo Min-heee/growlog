@@ -1,8 +1,8 @@
 // 집중 타이머: 포모도로·스톱워치. 시작 시각을 저장해두어 새로고침하거나 다른 화면으로 가도 이어진다.
-import { activeAreas, addEntry, areaById, canAddArea, getState } from '../store.js';
+import { activeAreas, addEntry, areaById, canAddArea, getState, lastFeel, setEntryFeel } from '../store.js';
 import { toKey, todayKey } from '../dates.js';
-import { esc, fmtHM, isNativeApp, sendToApp, sum } from '../util.js';
-import { areaColor, entryList, refresh, savedToast, toast } from '../ui.js';
+import { esc, fmtHM, isNativeApp, sendToApp, sum, uid } from '../util.js';
+import { areaColor, entryList, FEEL_LABELS, feelChoices, refresh, savedToast, toast } from '../ui.js';
 import { openAreaMaker } from './today.js';
 
 const KEY = 'growlog:timer';
@@ -15,7 +15,8 @@ const DIAL = 150; // 다이얼의 눈금 수
 const MAX_BANKED = 3650 * 864e5; // 저장된 값이 깨졌을 때 날짜 계산이 무너지지 않게 막는 선
 
 // phase: idle(대기) | running(집중) | paused(일시정지) | break(휴식)
-const fresh = () => ({ areaId: null, title: '', preset: 25, phase: 'idle', startedAt: 0, banked: 0, finished: false });
+// entryId: 방금 그때그때 다른 일에 남긴 기록. 다음 세션을 시작할 때까지 끝나고 어땠는지 고칠 수 있다.
+const fresh = () => ({ areaId: null, title: '', preset: 25, phase: 'idle', startedAt: 0, banked: 0, finished: false, entryId: null });
 
 // 저장된 값도 화면과 기록에 그대로 쓰이므로 형식이 틀린 값은 버린다
 function clean(x) {
@@ -30,6 +31,7 @@ function clean(x) {
     startedAt,
     banked: time(x.banked, MAX_BANKED),
     finished: x.finished === true,
+    entryId: typeof x.entryId === 'string' ? x.entryId : null,
   };
 }
 
@@ -229,18 +231,23 @@ function finishFocus() {
   const { areaId, title, preset: minutes } = t;
   // 앱을 나중에 열어도 세션이 실제로 끝난 날짜로 기록한다
   const endedAt = t.startedAt + minutes * 60000 - t.banked;
+  const feel = feelFor(areaId);
+  const id = uid();
   // 화면을 그리다 오류가 나도 같은 세션을 또 기록하지 않도록 상태부터 저장한다
-  t = idle({ finished: true });
+  t = idle({ finished: true, entryId: feel ? id : null });
   save();
   chime();
   if (areaById(areaId)) {
-    addEntry({ date: toKey(new Date(endedAt)), areaId, minutes, title, source: 'timer', createdAt: endedAt }, { background: true });
+    addEntry({ id, date: toKey(new Date(endedAt)), areaId, minutes, title, source: 'timer', createdAt: endedAt, feel }, { background: true });
     savedToast(`${minutes}분 집중 완료! 기록해뒀어요.`);
   } else {
     refresh({ background: true });
     toast('영역이 사라져서 이 세션은 기록하지 못했어요');
   }
 }
+
+/** 그때그때 다른 일이면 그 영역에서 지난번에 고른 값으로 먼저 남기고, 끝난 화면에서 고치게 한다 */
+const feelFor = (areaId) => (areaById(areaId)?.kind === 'varies' ? lastFeel(areaId) : undefined);
 
 function finishBreak() {
   t = idle();
@@ -274,9 +281,12 @@ function stopAndLog() {
   const minutes = Math.min(1440, spent); // 하루 기록 한도
   const { areaId, title } = t;
   const known = areaById(areaId);
-  t = idle();
+  const feel = feelFor(areaId);
+  const id = uid();
+  const logs = minutes >= 1 && !!known;
+  t = idle({ entryId: logs && feel ? id : null });
   save();
-  if (minutes >= 1 && known) addEntry({ date: todayKey(), areaId, minutes, title, source: 'timer' });
+  if (logs) addEntry({ id, date: todayKey(), areaId, minutes, title, source: 'timer', feel });
   else refresh();
   if (!known) toast('영역이 사라져서 이 세션은 기록하지 못했어요');
   else if (minutes < 1) toast('1분 미만이라 기록하지 않았어요');
@@ -346,7 +356,7 @@ function act(action, value) {
         return;
       }
       unlockAudio();
-      t = { ...t, phase: 'running', startedAt: Date.now(), banked: 0, finished: false };
+      t = { ...t, phase: 'running', startedAt: Date.now(), banked: 0, finished: false, entryId: null };
       break;
     case 'pause':
       t = { ...t, phase: 'paused', banked: elapsed(), startedAt: 0 };
@@ -418,6 +428,18 @@ export function label(state) {
 }
 export const live = () => t.phase === 'running';
 
+/** 방금 끝낸 그때그때 다른 일. 세션이 진행 중일 때는 보이지 않는다 */
+function feelCard(state) {
+  if (!t.entryId || t.phase === 'running' || t.phase === 'paused') return '';
+  const entry = state.entries.find((e) => e.id === t.entryId);
+  const area = entry && areaById(entry.areaId, state);
+  if (area?.kind !== 'varies') return '';
+  return `<section class="card">
+    <h2>방금 한 ${esc(area.label)} ${fmtHM(entry.minutes)}</h2>
+    ${feelChoices(entry.feel ?? 'same', 'timer-feel', entry.id)}
+  </section>`;
+}
+
 export function render(state) {
   const areas = activeAreas(state);
   pickArea(state);
@@ -445,6 +467,7 @@ export function render(state) {
     </div>
     <div class="timer-actions">${actions(area, sessions)}</div>
     <p class="hint timer-note">화면이 꺼지거나 다른 앱으로 가면 알림음이 울리지 않아요. 시간은 그대로 기록돼요.</p>
+    <div>${feelCard(state)}</div>
     <section class="card">
       <h2>무엇에 집중하나요?</h2>
       <p class="sub">세션이 끝나면 고른 영역에 자동으로 기록돼요.</p>
@@ -465,6 +488,9 @@ export const on = {
     if (button?.dataset.action === 'make-area') {
       openAreaMaker();
       location.hash = '#/today';
+    } else if (button?.dataset.action === 'timer-feel') {
+      setEntryFeel(button.dataset.id, button.dataset.value);
+      savedToast(`${FEEL_LABELS[button.dataset.value]}로 남겼어요`);
     } else if (button) act(button.dataset.action, button.dataset.value ?? button.dataset.id);
   },
   input(e) {

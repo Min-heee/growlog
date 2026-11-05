@@ -1,5 +1,5 @@
 // 설정 화면: 활동 영역·주간 목표, 수면 목표, 테마, 백업
-import { addArea, areaById, canAddArea, canRead, createDefaultState, freeColors, getState, isBackup, MAX_AREAS, normalize, removeArea, replaceState, resetState, setProfile, setSleepGoal, setTheme, updateArea } from '../store.js';
+import { addArea, areaById, canAddArea, canRead, createDefaultState, freeColors, getState, hasNewerData, isBackup, isNewer, MAX_AREAS, normalize, removeArea, replaceState, resetState, setProfile, setSleepGoal, setTheme, updateArea } from '../store.js';
 import { exportData } from '../backup.js';
 import { buildSample } from '../sample.js';
 import { installState, promptInstall } from '../pwa.js';
@@ -25,8 +25,11 @@ const AGES = [
   ['senior', '65세 이상'],
 ];
 
-const kindOptions = (kind) =>
-  `<option value="load"${kind === 'load' ? ' selected' : ''}>부하</option><option value="recovery"${kind === 'recovery' ? ' selected' : ''}>회복</option>`;
+const KIND_OPTIONS = [
+  ['load', '해야 하는 일'],
+  ['varies', '그때그때 달라요'],
+];
+const kindOptions = (kind) => KIND_OPTIONS.map(([value, label]) => `<option value="${value}"${kind === value ? ' selected' : ''}>${label}</option>`).join('');
 
 let colorOpen = null; // 색을 고르는 중인 영역
 
@@ -54,7 +57,7 @@ function hiddenRow(a, state) {
 }
 
 // 입력 중인 내용은 화면을 다시 그려도 남아 있어야 한다
-const EMPTY_DRAFT = { emoji: '', label: '', goal: '120', kind: 'recovery', color: null };
+const EMPTY_DRAFT = { emoji: '', label: '', goal: '120', kind: 'load', color: null };
 let draft = { ...EMPTY_DRAFT };
 
 const addForm = (state) => {
@@ -127,7 +130,7 @@ export function render(state) {
     </section>
     <section class="card">
       <h2>활동 영역과 주간 목표</h2>
-      <p class="sub"><b>부하</b>는 공부·일처럼 에너지를 쓰는 활동, <b>회복</b>은 운동·산책처럼 에너지를 채우는 활동이에요. 부하와 회복을 계산할 때 쓰여요.</p>
+      <p class="sub"><b>해야 하는 일</b>은 공부·일처럼 기록한 시간만큼 에너지를 쓴 것으로 쳐요. <b>그때그때 달라요</b>는 운동·게임·취미처럼 기록할 때마다 끝나고 채워졌는지, 지쳤는지 골라요. 부하와 회복을 계산할 때 쓰여요.</p>
       ${active.map((a) => areaRow(a, state)).join('')}
       ${canAddArea(state) ? addForm(state) : limit}
       ${hidden.length ? `<h3 class="mini-title">숨긴 영역</h3>${hidden.map((a) => hiddenRow(a, state)).join('')}` : ''}
@@ -161,13 +164,13 @@ picker.dataset.import = '';
 picker.addEventListener('change', importData);
 document.body.append(picker);
 
-const UNREADABLE = '저장된 기록을 읽지 못하고 있어요. 앱을 다시 연 뒤에 해주세요.';
+const unreadable = () => (hasNewerData() ? '더 새 버전 앱이 남긴 기록이 있어요. 새로고침하거나 앱을 업데이트한 뒤에 해주세요.' : '저장된 기록을 읽지 못하고 있어요. 앱을 다시 연 뒤에 해주세요.');
 
 async function importData() {
   const file = picker.files?.[0];
   if (!file) return;
   picker.value = '';
-  if (!canRead()) return toast(UNREADABLE);
+  if (!canRead()) return toast(unreadable());
   let data;
   try {
     data = JSON.parse(await file.text());
@@ -175,6 +178,7 @@ async function importData() {
     data = null;
   }
   // 덮어쓰기 전에 파일부터 검증한다. 틀린 파일이면 지금 기록은 그대로 둔다.
+  if (isNewer(data) && Array.isArray(data.areas) && Array.isArray(data.entries)) return toast('더 새 버전 앱에서 만든 백업이에요. 앱을 업데이트한 뒤 가져와주세요');
   if (!isBackup(data)) return toast('그로우로그 백업 파일이 아니에요');
   const skipped = data.entries.length - normalize(data).entries.length;
   const note = skipped ? ` 형식이 잘못된 기록 ${skipped}개는 빼고 불러와요.` : '';
@@ -213,7 +217,7 @@ export const on = {
     const button = e.target.closest('[data-action]');
     if (!button) return;
     const { action, id, value } = button.dataset;
-    if (['remove-area', 'sample', 'reset'].includes(action) && !canRead()) return toast(UNREADABLE);
+    if (['remove-area', 'sample', 'reset'].includes(action) && !canRead()) return toast(unreadable());
     if (action === 'area-color-open') {
       colorOpen = colorOpen === id ? null : id;
       refresh();

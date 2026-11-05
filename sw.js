@@ -140,7 +140,8 @@ async function respond(request) {
 }
 
 let replaced = false; // sw.js가 바뀐 배포면 설치 단계에서 새 버전을 받으므로, 활성화한 뒤에 알린다
-let upgraded = false; // 옛 워커를 밀어냈다. 옛 코드가 떠 있는 창은 새 형식의 기록(영역 7~8개, 색 7~10번)을 자기 형식으로 줄여 덮어쓴다
+// 기록 형식 2 (js/store.js의 VERSION). 형식이 바뀌면 이 줄도 바꿔서 sw.js가 달라지게 한다. 그래야 새 워커가 설치되어 아래 upgraded로 열린 창을 다시 연다.
+let upgraded = false; // 옛 워커를 밀어냈다. 옛 코드가 떠 있는 창은 새 형식의 기록(영역 7~8개, 색 7~10번, 그때그때 다른 일과 끝나고 나니)을 자기 형식으로 줄여 덮어쓴다
 
 self.addEventListener('install', (event) => {
   upgraded = !!self.registration.active;

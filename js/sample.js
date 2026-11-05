@@ -4,7 +4,7 @@ import { addDays, fromKey, todayKey, weekStartKey } from './dates.js';
 import { uid } from './util.js';
 
 const SAMPLE_AREAS = [
-  { id: 'exercise', label: '운동', emoji: '🏃', goal: 150, kind: 'recovery', color: 1 },
+  { id: 'exercise', label: '운동', emoji: '🏃', goal: 150, kind: 'varies', color: 1 },
   { id: 'study', label: '공부', emoji: '📚', goal: 420, kind: 'load', color: 2 },
   { id: 'dev', label: '개발', emoji: '💻', goal: 600, kind: 'load', color: 3 },
 ];
@@ -61,6 +61,8 @@ export function buildSample(days = 98) {
       detach: score(busy ? 1 : 2.4, busy ? 3 : 5),
     };
     const dayStart = fromKey(date).getTime();
+    // 운동은 대개 개운했지만, 바쁜 때는 억지로 해서 지친 날도 있다. 난수를 더 쓰지 않아야 나머지 샘플이 그대로다.
+    const feel = (areaId) => (areaId !== 'exercise' ? {} : { feel: busy && i % 3 === 0 ? 'drain' : i % 7 === 0 ? 'same' : 'fill' });
     const add = (areaId, minutes, hour) =>
       state.entries.push({
         id: uid(),
@@ -70,6 +72,7 @@ export function buildSample(days = 98) {
         title: pick(TITLES[areaId]),
         source: rand() < 0.3 ? 'timer' : 'manual',
         createdAt: dayStart + hour * 3600000,
+        ...feel(areaId),
       });
     if (rand() < (busy ? 0.25 : 0.65)) add('exercise', between(20, 60), 7);
     if (rand() < 0.85) add('study', busy ? between(90, 200) : between(30, 120), 12);

@@ -1,5 +1,5 @@
 // 앱 진입점: 해시 라우팅, 화면 그리기, 이벤트 위임
-import { deleteEntry, getState, hasSaveFailed, restoreEntry, retrySave, subscribe } from './store.js';
+import { deleteEntry, getState, hasNewerData, hasSaveFailed, restoreEntry, retrySave, subscribe } from './store.js';
 import { exportData } from './backup.js';
 import { resetTips } from './charts.js';
 import { todayKey } from './dates.js';
@@ -69,7 +69,10 @@ const editing = () => {
 /** 업데이트 직후에는 옛 index.html과 새 스크립트가 만날 수 있어 경고 칸이 없을 수도 있다 */
 function showSaveWarning() {
   const warning = document.getElementById('save-warning');
-  if (warning) warning.hidden = !hasSaveFailed();
+  if (!warning) return;
+  warning.hidden = !hasSaveFailed();
+  warning.dataset.usual ??= warning.textContent;
+  warning.textContent = hasNewerData() ? '더 새 버전 앱이 남긴 기록이 있어요. 새로고침하거나 앱을 업데이트해주세요. 그때까지 여기서 바꾼 내용은 저장되지 않아요.' : warning.dataset.usual;
 }
 
 /** 머리글의 작은 글자: 화면마다 지금 무엇을 보는지 말한다 */

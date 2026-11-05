@@ -3,18 +3,24 @@ import { fromKey } from './dates.js';
 import { sendToApp, uid } from './util.js';
 
 const KEY = 'growlog:v1';
+// 기록 형식. 2부터 영역 종류 varies와 기록의 feel이 있다. 형식을 바꾸면 sw.js의 '기록 형식' 줄도 고쳐야 새 서비스 워커가 설치되고,
+// 옛 코드가 떠 있는 창을 모두 다시 연다. 옛 코드는 모르는 값을 지우고 저장하기 때문이다.
+export const VERSION = 2;
 export const MAX_AREAS = 8;
 export const AREA_COLORS = 10; // 영역마다 1~10번 색 가운데 하나를 고른다. 영역끼리는 겹치지 않는다
 const COLOR_IDS = Array.from({ length: AREA_COLORS }, (_, i) => i + 1);
+// 영역 종류. load: 공부·일처럼 한 시간이 곧 부하. varies: 운동·게임·취미처럼 기록마다 끝나고 어땠는지(feel)를 고른다
+export const KINDS = ['load', 'varies'];
+export const FEELS = ['fill', 'same', 'drain'];
 export const MARK_TAGS = ['일', '공부', '관계', '건강', '기타'];
 const ROLES = ['worker', 'student', 'other'];
 const AGES = ['adult', 'u18', 'senior'];
 
 export function createDefaultState() {
   return {
-    version: 1,
+    version: VERSION,
     areas: [], // 무엇을 기록할지는 사용자가 직접 만든다
-    entries: [], // { id, date, areaId, minutes, title, source: 'manual'|'timer', createdAt }
+    entries: [], // { id, date, areaId, minutes, title, source: 'manual'|'timer', createdAt, feel?: 'fill'|'same'|'drain' }
     sleep: {}, // 일어난 날짜 → { bed, wake, quality }
     checkins: {}, // 날짜 → { energy, stress, mood, detach, note }
     marks: [], // 지친 날 { id, date, sev, fuzz, tag, closedOn, createdAt } 또는 새 평소 { id, date, rebase, closedOn, createdAt }
@@ -56,9 +62,10 @@ function cleanAreas(list) {
       label: text(a.label, 40),
       emoji: text(a.emoji, 16) || '✨',
       goal: Math.min(10080, Math.round(number(a.goal, 0, Number.MAX_VALUE) ?? 0)),
-      kind: a.kind === 'recovery' ? 'recovery' : 'load',
+      kind: KINDS.includes(a.kind) || a.kind === 'recovery' ? a.kind : 'load', // 예전 'recovery'는 normalize에서 옮긴다
       color: number(a.color, 1, AREA_COLORS),
       archived: a.archived === true,
+      ...(FEELS.includes(a.feel) && { feel: a.feel }), // 기록이 없을 때 끝나고 나니의 처음 값
     }));
   const used = new Set();
   const free = () => COLOR_IDS.find((c) => !used.has(c) && !areas.some((a) => a.color === c));
@@ -73,7 +80,7 @@ function cleanEntry(e) {
   if (!isMap(e) || !isDate(e.date) || typeof e.areaId !== 'string') return null;
   const minutes = number(e.minutes, 1, Number.MAX_VALUE);
   if (minutes === null) return null;
-  return {
+  const entry = {
     id: typeof e.id === 'string' && e.id ? e.id : uid(),
     date: e.date,
     areaId: e.areaId,
@@ -82,6 +89,16 @@ function cleanEntry(e) {
     source: e.source === 'timer' ? 'timer' : 'manual',
     createdAt: number(e.createdAt, 0, Number.MAX_SAFE_INTEGER) ?? fromKey(e.date).getTime(),
   };
+  if (FEELS.includes(e.feel)) entry.feel = e.feel;
+  return entry;
+}
+
+/** 예전에는 영역마다 '에너지를 채워요'를 정해뒀다. 그 영역은 그때그때 다른 일이 되고, 그동안의 기록과 앞으로의 처음 값은 채워졌어요로 친다. */
+function migrateRecovery(areas, entries) {
+  const filled = new Set(areas.filter((a) => a.kind === 'recovery').map((a) => a.id));
+  for (const area of areas) if (area.kind === 'recovery') Object.assign(area, { kind: 'varies', feel: area.feel ?? 'fill' });
+  for (const entry of entries) if (filled.has(entry.areaId) && !entry.feel) entry.feel = 'fill';
+  return { areas, entries };
 }
 
 function cleanMark(m) {
@@ -116,10 +133,11 @@ function cleanByDate(map, clean) {
 export function normalize(data) {
   const base = createDefaultState();
   if (!isMap(data)) return base;
+  const { areas, entries } = migrateRecovery(Array.isArray(data.areas) ? cleanAreas(data.areas) : base.areas, Array.isArray(data.entries) ? data.entries.map(cleanEntry).filter(Boolean) : []);
   return {
-    version: 1,
-    areas: Array.isArray(data.areas) ? cleanAreas(data.areas) : base.areas,
-    entries: Array.isArray(data.entries) ? data.entries.map(cleanEntry).filter(Boolean) : [],
+    version: VERSION,
+    areas,
+    entries,
     sleep: cleanByDate(data.sleep, (n) => ({ bed: clock(n.bed), wake: clock(n.wake), quality: rating(n.quality) })),
     checkins: cleanByDate(data.checkins, (c) => ({ energy: rating(c.energy), stress: rating(c.stress), mood: rating(c.mood), detach: rating(c.detach), note: text(c.note, 200) })),
     marks: Array.isArray(data.marks) ? data.marks.map(cleanMark).filter(Boolean) : [],
@@ -132,7 +150,9 @@ export function normalize(data) {
   };
 }
 
-export const isBackup = (data) => isMap(data) && Array.isArray(data.areas) && Array.isArray(data.entries) && (cleanAreas(data.areas).length > 0 || data.areas.length === 0);
+/** 이 코드보다 새 형식이면 읽고 저장하면서 모르는 값을 지우게 되니 건드리지 않는다 */
+export const isNewer = (data) => isMap(data) && Number.isInteger(data.version) && data.version > VERSION;
+export const isBackup = (data) => !isNewer(data) && isMap(data) && Array.isArray(data.areas) && Array.isArray(data.entries) && (cleanAreas(data.areas).length > 0 || data.areas.length === 0);
 
 // ---- 읽기·쓰기 ----
 /** 저장소를 읽지 못하면 undefined, 기록이 없거나 깨졌으면 null. 둘을 구분해야 일시적인 오류로 기록을 덮어쓰지 않는다. */
@@ -144,10 +164,14 @@ function read() {
     return undefined;
   }
   try {
-    const data = raw ? normalize(JSON.parse(raw)) : null;
+    const parsed = raw ? JSON.parse(raw) : null;
+    newerOnDisk = isNewer(parsed);
+    if (newerOnDisk) return undefined; // 더 새 버전 앱이 남긴 기록이다. 덮어쓰지 않도록 읽지 못한 것으로 둔다
+    const data = parsed ? normalize(parsed) : null;
     if (data) lastGood = raw;
     return data;
   } catch {
+    newerOnDisk = false;
     return null;
   }
 }
@@ -170,6 +194,7 @@ function storageWorks() {
 }
 
 let lastGood = null; // 마지막으로 읽거나 쓴 기록. 알림 없이 기록이 사라져도 메모리의 기록을 버리지 않게 한다.
+let newerOnDisk = false; // 더 새 버전 앱이 남긴 기록이 있어서 읽지도 덮어쓰지도 않는 중
 const stored = read();
 let state = stored ?? createDefaultState();
 let saveFailed = stored === undefined || !storageWorks();
@@ -178,6 +203,15 @@ const listeners = new Set();
 
 export const getState = () => state;
 export const hasSaveFailed = () => saveFailed;
+export const hasNewerData = () => newerOnDisk;
+/** 저장된 글 그대로. 더 새 버전의 기록은 화면에 보이는 빈 기본값 대신 이것을 백업해야 잃지 않는다 */
+export function storedText() {
+  try {
+    return localStorage.getItem(KEY);
+  } catch {
+    return null;
+  }
+}
 export function subscribe(fn) {
   listeners.add(fn);
   return () => listeners.delete(fn);
@@ -230,7 +264,7 @@ function commit(mutate, { quiet = false, background = false } = {}) {
 globalThis.addEventListener?.('storage', (e) => {
   if (e.key !== KEY && e.key !== null) return; // null이면 저장소 전체가 지워진 것
   if (e.newValue === null) lastGood = null;
-  if (sync()) notify(false, true);
+  if (sync() || newerOnDisk) notify(false, true); // 다른 창이 더 새 버전으로 저장했다면 경고를 바로 띄운다
 });
 
 // ---- 조회 ----
@@ -238,10 +272,23 @@ export const activeAreas = (s = state) => s.areas.filter((a) => !a.archived);
 export const areaById = (id, s = state) => s.areas.find((a) => a.id === id);
 
 // ---- 활동 기록 ----
-export function addEntry({ date, areaId, minutes, title = '', source = 'manual', createdAt = Date.now() }, opts) {
+/** 기록을 남기고 id를 돌려준다. feel은 그때그때 다른 일에만 붙인다. */
+export function addEntry({ id = uid(), date, areaId, minutes, title = '', source = 'manual', createdAt = Date.now(), feel }, opts) {
   // 저장에 실패하면 다시 적용될 수 있으니 id는 변경 밖에서 정한다
-  const entry = { id: uid(), date, areaId, minutes: Math.round(minutes), title: title.trim(), source, createdAt };
-  commit((s) => void s.entries.push(entry), opts);
+  const entry = { id, date, areaId, minutes: Math.round(minutes), title: title.trim(), source, createdAt, ...(FEELS.includes(feel) && { feel }) };
+  commit((s) => void s.entries.push({ ...entry }), opts);
+  return entry.id;
+}
+export const setEntryFeel = (id, feel) =>
+  commit((s) => {
+    const entry = s.entries.find((e) => e.id === id);
+    if (entry && FEELS.includes(feel)) entry.feel = feel;
+  });
+/** 그 영역에서 마지막으로 고른 끝나고 나니. 처음이면 영역의 처음 값, 그것도 없으면 계산에 넣지 않는 그대로예요 */
+export function lastFeel(areaId, s = state) {
+  let last = null;
+  for (const e of s.entries) if (e.areaId === areaId && e.feel && (!last || e.createdAt >= last.createdAt)) last = e;
+  return last?.feel ?? areaById(areaId, s)?.feel ?? 'same';
 }
 export const restoreEntry = (entry) =>
   commit((s) => {
@@ -306,6 +353,7 @@ export const freeColors = (s = state, except = null) => COLOR_IDS.filter((c) => 
 
 /** 새 영역을 만들고 id를 돌려준다. 자리가 없으면 null */
 export function addArea({ label, emoji = '✨', goal = 0, kind = 'load', color }) {
+  if (!KINDS.includes(kind)) kind = 'load';
   if (!canAddArea()) return null;
   const id = uid();
   commit((s) => {
@@ -319,6 +367,7 @@ export const updateArea = (id, { color, ...patch }, opts) =>
   commit((s) => {
     const area = areaById(id, s);
     if (!area) return;
+    if (patch.kind !== undefined && !KINDS.includes(patch.kind)) delete patch.kind;
     Object.assign(area, patch);
     if (color !== undefined && freeColors(s, id).includes(color)) area.color = color;
   }, opts);

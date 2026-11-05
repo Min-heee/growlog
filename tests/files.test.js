@@ -17,3 +17,11 @@ test('앱이 쓰는 파일은 모두 FILES에 있다', () => {
   const used = [...walk('js/'), ...walk('css/'), ...walk('icons/')];
   assert.deepEqual(used.filter((f) => !listed.includes(f)), []);
 });
+
+test('기록 형식을 바꾸면 sw.js도 바뀐다', () => {
+  // sw.js가 그대로면 새 워커가 설치되지 않아, 옛 코드가 떠 있는 창이 새 형식의 기록을 줄여 덮어쓴다
+  const version = readFileSync(new URL('js/store.js', root), 'utf8').match(/^export const VERSION = (\d+);$/m)?.[1];
+  const marked = readFileSync(new URL('sw.js', root), 'utf8').match(/기록 형식 (\d+)/)?.[1];
+  assert.ok(version);
+  assert.equal(marked, version);
+});

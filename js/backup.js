@@ -1,5 +1,5 @@
 // 백업 파일 내보내기. 설정 화면과 오류 복구 화면이 함께 쓴다.
-import { getState } from './store.js';
+import { getState, hasNewerData, storedText } from './store.js';
 import { todayKey } from './dates.js';
 import { toast } from './ui.js';
 import { sendToApp } from './util.js';
@@ -16,7 +16,8 @@ function download(file) {
 
 export async function exportData() {
   const name = `growlog-backup-${todayKey()}.json`;
-  const text = JSON.stringify(getState(), null, 2);
+  // 더 새 버전의 기록을 읽지 않고 있다면 화면의 빈 기본값이 아니라 저장된 기록을 그대로 내보낸다
+  const text = (hasNewerData() && storedText()) || JSON.stringify(getState(), null, 2);
   if (sendToApp({ share: { name, text } })) return; // 아이폰 앱 안에서는 내려받기가 없어 앱이 공유 창을 연다
   const file = new File([text], name, { type: 'application/json' });
   // 폰에서는 공유 창으로 파일 앱이나 메신저에 바로 보낼 수 있게 한다
