@@ -1,4 +1,4 @@
-// node --test tests/ 로 실행한다. 저장소가 잠깐 막혔다가 돌아오는 경우를 흉내 낸다.
+// node --test 로 실행한다. 저장소가 잠깐 막혔다가 돌아오는 경우를 흉내 낸다.
 import assert from 'node:assert/strict';
 import test from 'node:test';
 

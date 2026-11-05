@@ -1,4 +1,4 @@
-// node --test tests/ 로 실행한다
+// node --test 로 실행한다
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { addDays, todayKey, weekStartKey } from '../js/dates.js';
