@@ -82,7 +82,9 @@ function contextNotes(state, ctx) {
     if (active >= 14 && week >= 55) notes.push(`최근 4주 기록이 주 평균 ${shown}시간이에요. 일하는 시간이 이만큼 오래 이어지면 건강에 좋지 않다고 보고됐어요. 연구는 일한 시간을 봤고, 이 숫자는 기록한 시간 기준이에요. 자세한 내용은 아래 계산 근거에 있어요.`);
     else if (active >= 14 && week > 52) notes.push(`최근 4주 기록이 주 평균 ${shown}시간으로, 주 52시간(40시간 + 연장 12시간)보다 많아요. 기록한 시간 기준이에요.`);
   }
-  if (log[0] && log[0].date <= addDays(today, -91)) {
+  // 12주 평균은 활동 시간을 기록하기 시작한 뒤로만 잰다. 컨디션만 남기던 주까지 0시간으로 치면 늘 하던 만큼 기록해도 30% 늘었다고 나온다
+  const firstLoad = log.find((e) => e.loadRaw > 0)?.date;
+  if (firstLoad && firstLoad <= addDays(today, -91)) {
     const recent = rawLoad(rangeKeys(today, 7));
     const before = rawLoad(rangeKeys(addDays(today, -7), 84)) / 12;
     if (before > 0 && recent >= before * 1.3) notes.push('이번 7일 기록이 지난 12주 평균보다 30% 이상 많아요.');
