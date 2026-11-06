@@ -213,15 +213,26 @@ subscribe((_, { quiet, background }) => {
 });
 addEventListener('hashchange', () => {
   if (root.contains(document.activeElement)) document.activeElement.blur(); // 뒤로 가기로 떠나도 입력하던 칸이 저장되게 한다
+  views[routeName()].enter?.(); // 화면에 들어올 때마다 펼쳐 둘 칸을 새로 정한다
   render();
   scrollTo(0, 0);
   views[shown].arrive?.(root);
 });
 // 자정을 넘겨 다시 열었을 때 '오늘'이 바뀌도록. 폰에서 앱을 오갈 때마다 다시 그리면 입력 중인 칸의 포커스가 풀린다.
+// 아이폰 앱은 화면을 계속 살려 두므로, 오래 떠나 있다 돌아오면 탭에 새로 들어온 것처럼 펼칠 칸을 다시 정한다. 입력 중이면 건드리지 않는다.
+const REENTER_AFTER = 30 * 60 * 1000;
+let hiddenAt = 0;
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) return;
+  if (document.hidden) {
+    hiddenAt = Date.now();
+    return;
+  }
   retrySave();
-  if (todayKey() !== renderedDay) render();
+  if (hiddenAt && Date.now() - hiddenAt >= REENTER_AFTER && !editing() && views[shown].enter) {
+    views[shown].enter();
+    render();
+    scrollTo(0, 0);
+  } else if (todayKey() !== renderedDay) render();
 });
 addEventListener('focus', retrySave);
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme(getState().theme));

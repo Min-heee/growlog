@@ -54,7 +54,7 @@ const UPDOWN_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10l
 /** 1~5점 세로 페이더. 끌면 페이지 스크롤과 부딪히므로 높이마다 놓인 버튼을 눌러 고른다. */
 export function fader({ field, label, low, high }, value, action) {
   const buttons = [5, 4, 3, 2, 1]
-    .map((n) => `<button type="button" data-action="${action}" data-field="${field}" data-value="${n}" aria-pressed="${value === n}" aria-label="${label} ${n}점"></button>`)
+    .map((n) => `<button type="button" data-action="${action}" data-field="${field}" data-value="${n}" aria-pressed="${value === n}" aria-label="${label} ${n}점${n === 1 ? ` ${low}` : n === 5 ? ` ${high}` : ''}"></button>`)
     .join('');
   const place = { 1: ' above', 5: ' full' }[value] ?? ''; // 양 끝에서는 숫자가 위아래 글자와 겹치지 않게 옮긴다
   const level = value
