@@ -428,7 +428,7 @@ export const on = {
       const { left, top, width, height } = button.getBoundingClientRect();
       if (!saveArea()) return;
       // 두 번 누르면 두 번째 탭이 만들기 자리에 새로 나타난 칸을 누른다. 그 칸만 잠깐 막는다.
-      const under = document.elementFromPoint(left + width / 2, top + height / 2)?.closest('.field, button, a');
+      const under = document.elementFromPoint(left + width / 2, top + height / 2)?.closest('.field, .suffix-in, label, input, select, button, a');
       if (under) {
         under.style.pointerEvents = 'none';
         setTimeout(() => under.style.removeProperty('pointer-events'), 400);
@@ -461,6 +461,9 @@ export const on = {
       expanded = { ...UNDECIDED, checkin: true, list: expanded.list };
       el.blur(); // 포커스가 남아 있으면 입력 중으로 보고 다른 곳이 저장해도 다시 그리지 않는다
       refresh();
+      // 다시 그리면 포커스가 화면 맨 위로 가므로, 고른 날의 제목으로 옮겨 키보드와 화면 읽기가 그 자리에서 이어지게 한다.
+      // select에 다시 두면 아이폰에서 고르는 창이 또 열릴 수 있다.
+      document.querySelector('[data-action="fold"][data-value="checkin"]')?.focus({ preventScroll: true });
     } else if (el.dataset.sleep) {
       // 시간 입력칸은 값을 고치는 도중에도 change가 불려서, 전체를 다시 그리지 않고 필요한 곳만 고친다
       setSleep(pickedDay(), { [el.dataset.sleep]: el.value }, { quiet: true });

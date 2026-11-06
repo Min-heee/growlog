@@ -520,7 +520,6 @@ a.hero .hero-note::after { content: " \203A"; content: " \203A" / ""; color: var
 .list-more { display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%; min-height: 48px; padding: 0; border: 0; border-top: 1px solid var(--grid); background: none; color: var(--ink-2); font-size: 14px; font-weight: 600; cursor: pointer; }
 .week-card .card-head { margin-bottom: 12px; }
 @media (max-width: 359px) {
-  #sleep-form .row { flex-direction: row; } /* 시간 칸 둘은 320에서도 나란히 들어간다 */
   .more-hint { display: none; } /* 지친 날로 표시 옆에 들어가지 않는다 */
 }
 @media (max-width: 340px) {
