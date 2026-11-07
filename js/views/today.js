@@ -54,6 +54,8 @@ const FIT_WORD = 11; // 이보다 긴 말은 한 단계 작게 써야 한 줄에
 const SHORT_WORD = 4; // 이 안의 말은 가장 큰 글씨로 써도 한 줄에 들어간다
 
 const pickedDay = () => addDays(shownDay, -daysBack);
+let dayKeyAt = 0; // 날 고르기를 키보드로 다룬 때
+const KEYED_DAY = 10000; // 키를 누른 뒤 이 안에 날이 바뀌면 키보드로 고른 것으로 본다. 펼친 목록에서 고르는 시간까지 넉넉히 둔다
 const checkinDone = (c) => SCALES.every((s) => c?.[s.field] != null);
 const sleepDone = (night) => sleepHours(night?.bed, night?.wake) != null;
 const smooth = () => (matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
@@ -444,6 +446,7 @@ export const on = {
     }
   },
   keydown(e) {
+    if ('day' in e.target.dataset) dayKeyAt = Date.now();
     if (e.target.dataset.maker === 'label' && e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) saveArea(); // 229: 한글 조합을 마치는 Enter
   },
   input(e) {
@@ -461,9 +464,10 @@ export const on = {
       expanded = { ...UNDECIDED, checkin: true, list: expanded.list };
       el.blur(); // 포커스가 남아 있으면 입력 중으로 보고 다른 곳이 저장해도 다시 그리지 않는다
       refresh();
-      // 다시 그리면 포커스가 화면 맨 위로 가므로, 고른 날의 제목으로 옮겨 키보드와 화면 읽기가 그 자리에서 이어지게 한다.
+      // 다시 그리면 포커스가 화면 맨 위로 가므로, 키보드로 골랐다면 고른 날의 제목으로 옮겨 그 자리에서 이어지게 한다.
+      // 손가락으로 골랐다면 옮기지 않는다. 옮기면 아이폰이 제목에 굵은 포커스 테두리를 띄운다.
       // select에 다시 두면 아이폰에서 고르는 창이 또 열릴 수 있다.
-      document.querySelector('[data-action="fold"][data-value="checkin"]')?.focus({ preventScroll: true });
+      if (Date.now() - dayKeyAt < KEYED_DAY) document.querySelector('[data-action="fold"][data-value="checkin"]')?.focus({ preventScroll: true });
     } else if (el.dataset.sleep) {
       // 시간 입력칸은 값을 고치는 도중에도 change가 불려서, 전체를 다시 그리지 않고 필요한 곳만 고친다
       setSleep(pickedDay(), { [el.dataset.sleep]: el.value }, { quiet: true });
