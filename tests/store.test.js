@@ -289,3 +289,36 @@ test('더 새 버전 앱이 남긴 기록은 읽지 않고 덮어쓰지도 않�
   const { store: fresh } = await boot(seeded());
   assert.equal(fresh.hasNewerData(), false);
 });
+
+test('한 달 체크는 23개의 답만 남기고, 형식 2 기록은 그대로 형식 3으로 읽는다', async () => {
+  const half = [3, 4, ...Array(21).fill(null)];
+  const data = {
+    ...seeded(),
+    version: 2,
+    monthly: {
+      '2026-11-01': { a: half },
+      '2026-11-02': { a: Array(23).fill(null) }, // 하나도 답하지 않았다
+      '2026-11-03': { a: [3, 4] }, // 문항 수가 다르다
+      '2026-13-01': { a: half }, // 날짜가 아니다
+      '2026-11-04': { a: [9, 0, '2', ...Array(20).fill(1)] },
+    },
+  };
+  const normal = (await boot()).store.normalize(data);
+  assert.equal(normal.version, 3);
+  assert.deepEqual(Object.keys(normal.monthly), ['2026-11-01', '2026-11-04']);
+  assert.deepEqual(normal.monthly['2026-11-04'].a.slice(0, 4), [null, null, null, 1]);
+  assert.equal(normal.entries.length, 1);
+  assert.equal(normal.profile.monthlyOff, false);
+});
+
+test('한 달 체크에 답하면 그 기록에 쌓이고, 새로 시작하면 끝내지 못한 기록은 지운다', async () => {
+  const { store, disk } = await boot(seeded());
+  store.setMonthly('2026-10-01', 0, 3);
+  store.setMonthly('2026-10-01', 1, 4);
+  store.setMonthly('2026-10-01', 1, 2); // 고친다
+  store.setMonthly('2026-10-01', 23, 4); // 없는 문항
+  store.setMonthly('2026-10-01', 2, 6); // 없는 답
+  assert.deepEqual(disk().monthly['2026-10-01'].a.slice(0, 3), [3, 2, null]);
+  store.setMonthly('2026-11-09', 0, 5);
+  assert.deepEqual(Object.keys(disk().monthly), ['2026-11-09']);
+});

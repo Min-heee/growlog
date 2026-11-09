@@ -73,6 +73,8 @@ function showSaveWarning() {
   warning.hidden = !hasSaveFailed();
   warning.dataset.usual ??= warning.textContent;
   warning.textContent = hasNewerData() ? '더 새 버전 앱이 남긴 기록이 있어요. 새로고침하거나 앱을 업데이트해주세요. 그때까지 여기서 바꾼 내용은 저장되지 않아요.' : warning.dataset.usual;
+  // 위에 붙어 있는 다른 칸(한 달 체크의 고르는 말)이 경고 아래로 내려가도록 높이를 알려준다
+  document.documentElement.style.setProperty('--warn-h', warning.hidden ? '0px' : `${warning.offsetHeight + 4}px`);
 }
 
 /** 머리글의 작은 글자: 화면마다 지금 무엇을 보는지 말한다 */

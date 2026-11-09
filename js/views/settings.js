@@ -1,6 +1,7 @@
 // 설정 화면: 활동 영역·주간 목표, 수면 목표, 테마, 백업
 import { addArea, areaById, canAddArea, canRead, createDefaultState, freeColors, getState, hasNewerData, isBackup, isNewer, MAX_AREAS, normalize, removeArea, replaceState, resetState, setProfile, setSleepGoal, setTheme, updateArea } from '../store.js';
 import { exportData } from '../backup.js';
+import { READY } from '../bat-items.js';
 import { buildSample } from '../sample.js';
 import { installState, promptInstall } from '../pwa.js';
 import { resetTodayDrafts } from './today.js';
@@ -95,12 +96,12 @@ function installBody() {
   }
 }
 
-function profileCard({ role, age, hide }) {
+function profileCard({ role, age, hide, monthlyOff }) {
   const choice = (field, list, value) =>
     list.map(([v, label]) => `<button type="button" class="seg-btn" data-action="profile" data-field="${field}" data-value="${v}" aria-pressed="${value === v}">${label}</button>`).join('');
   return `<section class="card">
     <h2>나에게 맞추기</h2>
-    <p class="sub">부하와 회복을 계산할 때 어떤 기본값에서 시작할지 정해요. 기록이 쌓이면 내 값으로 옮겨가요.</p>
+    <p class="sub">부하와 회복을 계산할 때 어떤 기본값에서 시작할지 정해요. 기록이 쌓이면 내 값으로 옮겨가요.${READY && age !== 'u18' ? ' 주로 하는 일로 일을 고르면 회복 탭에서 한 달 체크도 할 수 있어요.' : ''}</p>
     <div class="stack">
       <div><div class="scale-head"><span class="scale-label">주로 하는 일</span></div><div class="seg" role="group" aria-label="주로 하는 일">${choice('role', ROLES, role)}</div></div>
       <div><div class="scale-head"><span class="scale-label">나이</span></div><div class="seg" role="group" aria-label="나이">${choice('age', AGES, age)}</div></div>
@@ -108,6 +109,10 @@ function profileCard({ role, age, hide }) {
         <span class="grow">쌓인 부하 추정 숨기기<small class="block">기록은 그대로 쌓이고, 추정만 안 보여요.</small></span>
         <button type="button" class="btn small" data-action="hide-estimate" aria-pressed="${hide}">${hide ? '다시 보기' : '숨기기'}</button>
       </div>
+      ${READY && role === 'worker' && age !== 'u18' ? `<div class="hidden-row">
+        <span class="grow">한 달 체크 숨기기<small class="block">답한 기록은 그대로 남아요.</small></span>
+        <button type="button" class="btn small" data-action="hide-monthly" aria-pressed="${monthlyOff}">${monthlyOff ? '다시 보기' : '숨기기'}</button>
+      </div>` : ''}
     </div>
   </section>`;
 }
@@ -192,7 +197,7 @@ async function importData() {
 function hasUserData() {
   const s = getState();
   const base = createDefaultState();
-  return s.entries.length > 0 || Object.keys(s.checkins).length > 0 || Object.keys(s.sleep).length > 0 || s.marks.length > 0 || Object.keys(s.weekly).length > 0 || s.sleepGoal !== base.sleepGoal || JSON.stringify(s.areas) !== JSON.stringify(base.areas);
+  return s.entries.length > 0 || Object.keys(s.checkins).length > 0 || Object.keys(s.sleep).length > 0 || s.marks.length > 0 || Object.keys(s.weekly).length > 0 || Object.keys(s.monthly).length > 0 || s.sleepGoal !== base.sleepGoal || JSON.stringify(s.areas) !== JSON.stringify(base.areas);
 }
 
 async function loadSample() {
@@ -243,6 +248,7 @@ export const on = {
     } else if (action === 'theme') setTheme(value);
     else if (action === 'profile') setProfile({ [button.dataset.field]: value });
     else if (action === 'hide-estimate') setProfile({ hide: !getState().profile.hide });
+    else if (action === 'hide-monthly') setProfile({ monthlyOff: !getState().profile.monthlyOff });
     else if (action === 'install') {
       if (await promptInstall()) toast('설치했어요. 홈 화면에서 열어보세요.');
     } else if (action === 'export') exportData();

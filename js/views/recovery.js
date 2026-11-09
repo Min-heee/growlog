@@ -1,8 +1,10 @@
 // 회복 화면: 내 평소와 비교한 부하, 지친 날 기록, 이번 주 돌아보기, 계산 근거
-import { addMark, addRebase, closeMarks, deleteMarks, getState, MARK_TAGS, reopenMarks, restoreMarks, setSupportSeen, setWeekly } from '../store.js';
+import { addMark, addRebase, BAT_ITEMS, closeMarks, deleteMarks, getState, MARK_TAGS, reopenMarks, restoreMarks, setMonthly, setSupportSeen, setWeekly } from '../store.js';
 import { addDays, fmtDay, fmtMonthDay, rangeKeys, sleepHours, todayKey, weekStartKey } from '../dates.js';
 import { BANDS, bandWord, insight, MILESTONES, SEVERITY } from '../insight.js';
 import { K } from '../strain.js';
+import { answered, change, editUntil, isComplete, LINES, PARTS, status } from '../bat.js';
+import { ANCHORS, INTRO, ITEMS, READY } from '../bat-items.js';
 import { zoneChart } from '../charts.js';
 import { esc, fmt1, fmtHM, fmtHours, josa } from '../util.js';
 import { ask, ratingScale, refresh, savedToast, tickBar, toast } from '../ui.js';
@@ -10,6 +12,9 @@ import { ask, ratingScale, refresh, savedToast, tickBar, toast } from '../ui.js'
 const HEADER = '<header class="page-head"><h1>부하와 회복</h1></header>';
 const CLAIM = '기록하신 내용을 바탕으로, 최근의 부하·수면·회복이 내 평소와 얼마나 다른지 요약해요. 번아웃이나 건강 상태를 판단하지 않아요.';
 const HIDDEN_CLAIM = '기록은 그대로 쌓이고 추정만 숨겼어요. 번아웃이나 건강 상태를 판단하지 않아요.';
+// 한 달 체크를 하는 분에게는 설문 결과도 진단이 아니라고 함께 말한다
+const BAT_CLAIM = '기록하신 내용을 바탕으로, 최근의 부하·수면·회복이 내 평소와 얼마나 다른지 요약해요. 한 달 체크는 설문 답을 유럽 연구의 두 선과 견주어 보여줘요. 둘 다 번아웃이나 건강 상태를 진단하지 않아요.';
+const BAT_HIDDEN_CLAIM = '기록은 그대로 쌓이고 추정만 숨겼어요. 한 달 체크를 포함해 번아웃이나 건강 상태를 진단하지 않아요.';
 const OLDEST_MARK = 90; // 지난 일도 떠올려 남길 수 있게 3개월까지 받는다
 const FUZZ = [
   [0, '정확해요'],
@@ -27,6 +32,12 @@ const BAND_NOTE = {
 const CLOSED_FORM = { open: false, date: '', closedOn: '', fuzz: 0, sev: null, tag: null };
 let form = { ...CLOSED_FORM };
 let chart = null; // 차트를 다시 그릴 때 쓰는 데이터
+let batOpen = false; // 한 달 체크 문항을 펼쳐 두었는지
+
+/** 화면에 들어올 때마다 한 달 체크 문항은 접어 둔다. 23문항이 길게 펼쳐진 채로 다시 보이지 않게 한다 */
+export function enter() {
+  batOpen = false;
+}
 
 /** 오늘 화면에서 '지친 날로 표시'를 눌렀을 때 표시 칸을 열어둔다 */
 export function openMarkForm(date) {
@@ -195,7 +206,7 @@ function personalCard(i, profile) {
     </div>
     <p class="mini-advice"><b>'한동안 평소보다 높아요' 기준.</b> ${esc(line)}</p>
     <p class="mini-advice"><b>필요한 수면.</b> ${p.showNeed ? `내 기록으로는 ${esc(fmtHours(p.need))}이에요.` : `기본값 ${esc(fmtHours(p.need0))}이에요. 잠과 컨디션 기록이 쌓이면 내 기록을 반영해요.`}</p>
-    ${profile.role === 'other' ? '<p class="hint strip-hint">일하는 분이나 학생, 18세 미만이라면 <a href="#/settings">나에게 맞추기</a>에서 알려주세요. 필요한 수면과 안내가 달라져요.</p>' : ''}
+    ${profile.role === 'other' ? `<p class="hint strip-hint">일하는 분이나 학생, 18세 미만이라면 <a href="#/settings">나에게 맞추기</a>에서 알려주세요. 필요한 수면과 안내가 달라져요.${READY && profile.age !== 'u18' ? ' 일하는 분은 한 달 체크도 할 수 있어요.' : ''}</p>` : ''}
   </section>`;
 }
 
@@ -305,6 +316,120 @@ function weeklyCard(state, i, today) {
   </section>`;
 }
 
+// ---- 한 달 체크 ----
+// 일하는 사람용 한국어판뿐이라 일하는 성인에게만 연다. 학생용이나 일하지 않는 사람용 한국어판이 없고, 문항을 바꿔 쓰면 안 된다.
+const batFor = (profile) => READY && profile.role === 'worker' && profile.age !== 'u18' && !profile.monthlyOff;
+const BAND = {
+  low: { label: '낮은 쪽이에요', text: `유럽 연구가 정한 첫 번째 선(${LINES.mid})보다 낮아요. 괜찮다는 판정은 아니에요. 힘들다면 점수보다 그 느낌을 믿어 주세요.` },
+  mid: { label: '두 선 사이예요', text: `유럽 연구가 정한 두 선(${LINES.mid}와 ${LINES.high}) 사이예요.` },
+  high: { label: '높은 쪽이에요', text: `유럽 연구가 정한 두 번째 선(${LINES.high}) 이상이에요. 혼자 버티기 어렵다면 도움받을 곳이 있어요.` },
+};
+const CHANGE = { up: '지난 체크들보다 평균이 높아졌어요.', down: '지난 체크들보다 평균이 낮아졌어요.' };
+const BAT_SOURCES = [
+  ['https://doi.org/10.3390/ijerph17249495', 'Schaufeli·Desart·De Witte 2020, Burnout Assessment Tool (BAT): Development, Validity, and Reliability. IJERPH 17(24):9495'],
+  ['https://burnoutassessmenttool.be/wp-content/uploads/2020/08/Test-Manual-BAT-English-version-2.0-1.pdf', 'Schaufeli·De Witte·Desart 2019, Burnout Assessment Tool (BAT) Test Manual. KU Leuven'],
+  ['https://doi.org/10.24230/kjiop.v33i4.461-499', '조수현 2020, 한국판 직무소진평가척도(K-BAT) 타당화를 위한 예비연구. 한국심리학회지: 산업 및 조직 33(4):461-499'],
+  ['https://doi.org/10.5271/sjweh.4093', 'Schaufeli 외 2023, How to assess severe burnout? Cutoff points for the Burnout Assessment Tool (BAT) based on three European samples. Scand J Work Environ Health 49(4):293-302'],
+  ['https://burnoutassessmenttool.be/wp-content/uploads/2020/08/BAT-Korean.pdf', '공식 한국어 설문지 (KU Leuven)'],
+];
+const BAT_METHOD = `<details class="table-view method">
+  <summary>선과 출처</summary>
+  <p>두 선은 유럽 세 나라(네덜란드, 벨기에, 핀란드) 직장인 자료로 정했어요. 일 때문에 많이 지쳐 도움을 받던 사람들과 일반 직장인의 답을 견주어 골랐어요. 도움을 받던 사람 중에는 스스로 그렇다고 답한 사람도 있어요. 많이 지쳤던 사람은 92%가 ${LINES.mid} 이상, 74%가 ${LINES.high} 이상이었어요. 일반 직장인은 79%가 ${LINES.mid} 아래, 91%가 ${LINES.high} 아래였어요. 연구진도 더 확인해야 하는 잠정 기준이라고 했어요.</p>
+  <p>선을 넘었어도 많이 지친 상태가 아닐 수 있고, 선 아래여도 많이 지친 상태일 수 있어요. 같은 사람도 체크할 때마다 점수가 조금씩 달라서, 선 가까이에서는 범위가 바뀌기 쉬워요. 이 점수로는 진단할 수 없어요. 지친 것인지 기분이 오래 가라앉은 것인지도 가르지 못해요.</p>
+  <p>한국에서 이 설문을 확인한 연구는 회사원을 대상으로 한 한 편이에요. 그 연구에서는 9번 문항이 잘 맞지 않아 빼고 22문항으로 봤고, 전체 평균 하나보다 네 부분을 따로 보는 편이 더 맞았어요. 이 앱은 공식 설문지대로 23문항을 모두 써요. 유럽의 선이 23문항으로 정해졌기 때문이에요.</p>
+  <p>높아졌다거나 낮아졌다는 말은 네 번 이상 체크한 뒤에만 해요. 지난 체크들의 평균과 0.36 이상 다르고, 그동안 오르내린 폭보다도 클 때예요. 한 달 간격과 답을 고칠 수 있는 7일은 앱이 정했어요. 얼마나 자주 해야 하는지 정한 연구는 없어요.</p>
+  <p>문항과 고르는 말은 공식 한국어판 그대로예요. 종이에 표시하라는 안내 한 문장만 앱에 맞지 않아 뺐어요. 답은 이 기기에만 남아요.</p>
+  <ul class="sources">${BAT_SOURCES.map(([href, text]) => `<li><a href="${href}" target="_blank" rel="noopener noreferrer">${esc(text)}</a></li>`).join('')}</ul>
+</details>`;
+
+function batResult(r, list) {
+  const before = list.filter((x) => x.date < r.date).slice(-4).reverse();
+  const moved = list.at(-1) === r ? change(list) : null;
+  return `<div class="bat-result">
+    <p class="bat-band" id="bat-result-head" tabindex="-1"><span class="fact">${BAND[r.band].label}</span></p>
+    <p class="sub">${esc(BAND[r.band].text)}</p>
+    <p class="bat-mean">답의 평균 <b>${r.mean.toFixed(2)}</b><small>1에서 5 사이</small></p>
+    <div class="fact-grid">${PARTS.map((p, i) => `<div><span>${p.label}</span><b>${r.parts[i].toFixed(2)}</b></div>`).join('')}</div>
+    <p class="hint">부분 점수에는 선을 두지 않았어요. 위의 두 선은 전체 평균에만 써요.</p>
+    ${moved ? `<p class="lead">${CHANGE[moved]}</p>` : ''}
+    ${before.length ? `<p class="hint">지난 체크 ${before.map((x) => `${fmtMonthDay(x.date)} ${x.mean.toFixed(2)}`).join(' · ')}</p>` : ''}
+    <p class="hint">이 선은 유럽 세 나라 직장인 자료로 정했어요. 한국 사람에게도 맞는지는 아직 확인되지 않았어요. 진단이 아니라 참고로 봐 주세요.</p>
+    <div class="bat-help">
+      <p class="hint">많이 힘들면 점수와 상관없이 도움받을 곳을 볼 수 있어요.</p>
+      <a class="btn small${r.band === 'high' ? ' primary' : ''}" href="#/help">도움받을 곳 보기</a>
+    </div>
+    ${BAT_METHOD}
+  </div>`;
+}
+
+function batList(key, a) {
+  const left = a.map((x, i) => (x == null ? i : -1)).filter((i) => i >= 0);
+  const rows = ITEMS.map((q, i) => {
+    const buttons = [1, 2, 3, 4, 5]
+      .map((n) => `<button type="button" class="seg-btn" data-action="bat" data-id="${key}" data-field="${i}" data-value="${n}" aria-pressed="${a[i] === n}" aria-label="${n} ${esc(ANCHORS[n - 1])}">${n}</button>`)
+      .join('');
+    return `<div class="bat-row"><p class="bat-q" id="bat-q${i}">${i + 1}. ${esc(q)}</p><div class="seg" role="group" aria-labelledby="bat-q${i}">${buttons}</div></div>`;
+  }).join('');
+  return `<div class="bat-list" id="bat-list">
+    <p class="bat-intro">${esc(INTRO)}</p>
+    <p class="hint">숫자를 눌러 하나씩 골라 주세요.</p>
+    <div class="bat-legend" aria-hidden="true">${ANCHORS.map((t, i) => `<span><b>${i + 1}</b>${esc(t)}</span>`).join('')}</div>
+    ${rows}
+    ${left.length ? `<div class="bat-left"><p class="hint">아직 ${left.length}문항이 남았어요.</p><button type="button" class="btn small" data-action="bat-jump" data-value="${left[0]}">${left[0] + 1}번으로 가기</button></div>` : '<div class="bat-left"><p class="hint">다 답했어요.</p><button type="button" class="btn small primary" data-action="bat-done">결과 보기</button></div>'}
+  </div>`;
+}
+
+function monthlyCard(state, today) {
+  if (!batFor(state.profile)) return '';
+  const hide = state.profile.hide;
+  const { list, last, next, open } = status(state.monthly, today);
+  if (!open) batOpen = false; // 고칠 수 있는 7일이 펼쳐 둔 채로 지났다
+  const a = (open && state.monthly[open]?.a) || Array(BAT_ITEMS).fill(null);
+  const n = answered(a);
+  const done = open != null && isComplete(a);
+  const current = done ? list.find((r) => r.date === open) : null;
+  let toggle = '';
+  if (open) {
+    const word = batOpen ? '접기' : done ? '답 고치기' : n ? `이어서 하기 ${n}/${BAT_ITEMS}` : '시작하기';
+    toggle = `<button type="button" class="btn small outline" data-action="bat-open" aria-expanded="${batOpen}" aria-controls="bat-list">${word}</button>`;
+  }
+  const until = open && fmtMonthDay(editUntil(open));
+  let body;
+  if (batOpen) body = batList(open, a);
+  else if (current && !hide) body = `<div id="bat-result">${batResult(current, list)}</div><p class="hint">${until}까지 답을 고칠 수 있어요.</p>`;
+  else if (current) body = `<details class="bat-past" id="bat-result"><summary>${fmtMonthDay(current.date)} 체크 결과 보기</summary>${batResult(current, list)}</details><p class="hint">${until}까지 답을 고칠 수 있어요.</p>`;
+  else if (open) {
+    body = `<p class="sub">일하면서 느끼는 것을 묻는 ${BAT_ITEMS}문항이에요. 한 달에 한 번, 5분쯤 걸려요. 하고 싶을 때만 해도 돼요. 연구에서 쓰는 설문이라 문항과 고르는 말을 그대로 보여드려요.</p>
+      ${n ? `<p class="hint">${until}까지 이어서 할 수 있어요.</p>` : ''}
+      ${last ? `<details class="bat-past"><summary>지난 체크 ${fmtMonthDay(last.date)} 결과 보기</summary>${batResult(last, list)}</details>` : ''}`;
+  } else {
+    body = `<details class="bat-past"><summary>지난 체크 ${fmtMonthDay(last.date)} 결과 보기</summary>${batResult(last, list)}</details>
+      <p class="hint">다음 체크는 ${fmtMonthDay(next)}부터 할 수 있어요.</p>`;
+  }
+  return `<section class="card bat-card" id="bat">
+    <div class="card-head"><h2>한 달 체크</h2>${toggle}</div>
+    ${body}
+  </section>`;
+}
+
+/** 그 문항을 화면 가운데로 옮기고 첫 번째 답에 포커스를 둔다 */
+function jumpTo(index) {
+  const row = document.getElementById(`bat-q${index}`);
+  row?.scrollIntoView({ block: 'center' });
+  row?.nextElementSibling.querySelector('button').focus({ preventScroll: true });
+}
+
+/** 마지막 문항에 답하면 문항이 접히고 결과가 그 자리에 나오므로, 결과로 옮겨 가서 화면 읽기 프로그램도 결과부터 읽게 한다 */
+function showBatResult() {
+  const el = document.getElementById('bat-result');
+  if (!el) return;
+  document.getElementById('bat').scrollIntoView({ block: 'start' }); // 카드 제목부터 보이게 한다
+  const warning = document.getElementById('save-warning');
+  if (warning && !warning.hidden) scrollBy(0, -warning.offsetHeight);
+  // 범위 이름부터 읽게 한다. 추정을 숨겼다면 접힌 결과의 제목으로 간다
+  (el.tagName === 'DETAILS' ? el.querySelector('summary') : document.getElementById('bat-result-head')).focus({ preventScroll: true });
+}
+
 const METHOD = `<section class="card">
   <details class="table-view method">
     <summary>이 추정은 어떻게 계산하나요</summary>
@@ -357,8 +482,9 @@ export function render(state) {
       <section class="card"><h2>추정을 숨겨뒀어요</h2><p class="sub flush">기록은 그대로 쌓여요. 다시 보려면 설정에서 바꿀 수 있어요.</p></section>
       ${marksCard(i, today, true)}
       ${weeklyCard(state, i, today)}
+      ${monthlyCard(state, today)}
       ${diaryCard(state, today)}
-      <p class="disclaimer">${HIDDEN_CLAIM}</p>`;
+      <p class="disclaimer">${batFor(state.profile) ? BAT_HIDDEN_CLAIM : HIDDEN_CLAIM}</p>`;
   }
   return `${supportCard(i)}
     ${hero(i)}
@@ -370,11 +496,12 @@ export function render(state) {
     ${helpedCard(i)}
     ${notesCard(i)}
     ${weeklyCard(state, i, today)}
+    ${monthlyCard(state, today)}
     ${diaryCard(state, today)}
     ${usualCard(i)}
     ${personalCard(i, state.profile)}
     ${METHOD}
-    <p class="disclaimer">${CLAIM}</p>`;
+    <p class="disclaimer">${batFor(state.profile) ? BAT_CLAIM : CLAIM}</p>`;
 }
 
 export const label = (state) => (state.profile.hide ? '회복' : '쌓인 부하 (추정)');
@@ -471,7 +598,31 @@ export const on = {
       const today = todayKey();
       // 쌓인 정도에 답한 날만 표시 날짜로 남긴다. 다른 칸을 나중에 답해도 날짜가 옮겨가지 않게 한다.
       setWeekly(weekStartKey(today), field === 'built' ? { built: Number(value), on: today } : { [field]: Number(value) });
-    } else if (action === 'support-close') setSupportSeen();
+    } else if (action === 'bat-open') {
+      batOpen = !batOpen;
+      refresh();
+      // 이어서 할 때는 처음 빈 문항으로 데려간다. 23문항을 다시 내려가지 않게 한다
+      const empty = batOpen ? document.querySelector('.bat-left [data-action="bat-jump"]') : null;
+      if (empty && document.querySelector('[data-action="bat"][aria-pressed="true"]')) jumpTo(empty.dataset.value);
+    } else if (action === 'bat') {
+      const index = Number(field);
+      const answer = Number(value);
+      const a = getState().monthly[id]?.a ?? Array(BAT_ITEMS).fill(null);
+      const finishing = !isComplete(a) && isComplete(a.map((x, i) => (i === index ? answer : x)));
+      if (finishing) batOpen = false; // 다 답하면 접고 결과를 보여준다
+      // 답을 고치다 범위가 바뀌면 맨 위에 도움 안내가 생기거나 사라져 목록이 밀린다. 누른 버튼이 손가락 아래에 그대로 있게 한다
+      const before = button.getBoundingClientRect().top;
+      setMonthly(id, index, answer);
+      if (finishing) showBatResult();
+      else {
+        const after = document.querySelector(`[data-action="bat"][data-field="${index}"][data-value="${answer}"]`)?.getBoundingClientRect().top;
+        if (after != null && after !== before) scrollBy(0, after - before);
+      }
+    } else if (action === 'bat-done') {
+      batOpen = false;
+      refresh();
+      showBatResult();
+    } else if (action === 'bat-jump') jumpTo(value); else if (action === 'support-close') setSupportSeen();
     else if (action === 'rebase' && (await ask('내일부터 평소를 새로 계산할까요? 지금까지의 기록은 그대로 남아요.', '새로 계산'))) {
       addRebase(todayKey());
       savedToast('내일부터 새로 계산할게요');

@@ -1,4 +1,5 @@
 // 쌓인 부하 모델의 결과를 화면에 쓸 말과 숫자로 바꾼다. 화면은 여기서 나온 값만 쓴다.
+import { results, supportFrom } from './bat.js';
 import { addDays, rangeKeys } from './dates.js';
 import { dailyLog, dayKey, dayNum, derive, isHard, isValid, K, quantile } from './strain.js';
 import { avg, fmt1, fmtHours, sum } from './util.js';
@@ -128,6 +129,11 @@ function supportCard(state, ctx) {
   }
   if (Date.now() - seen < SUPPORT_GAP) return null;
   const talk = '누군가와 이야기해 보는 것도 도움이 될 수 있어요.';
+  // 한 달 체크를 숨겼거나 열 수 없게 바뀐 사람에게는 그 체크를 들어 말하지 않는다
+  const { role, age, monthlyOff } = state.profile;
+  const bat = role === 'worker' && age !== 'u18' && !monthlyOff ? supportFrom(results(state.monthly ?? {}), today) : null;
+  if (bat === 'once') return { id: 'H4', text: `이번 한 달 체크에서 일하면서 힘든 순간이 적지 않다고 답해 주셨네요. ${talk}` };
+  if (bat === 'twice') return { id: 'H4', text: `지난 두 번의 한 달 체크 모두 일하면서 힘든 순간이 적지 않다고 답해 주셨네요. ${talk}` };
   const low = lastDays(14).filter(isValid);
   if (low.length >= 10 && low.filter((e) => e.mood <= 2 || e.energy <= 2).length / low.length >= 0.75) return { id: 'H1', text: `기운이나 기분이 낮은 날이 이어졌네요. ${talk}` };
   if (gap < K.GAP_UNKNOWN && ctx.recent.hard && runDays(days, (d) => d.flagged) >= 14) return { id: 'H2', text: `요즘 쉽지 않은 날이 이어진 것 같아요. ${talk}` };

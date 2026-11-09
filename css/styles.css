@@ -713,6 +713,32 @@ th { color: var(--ink-2); font-weight: 600; }
 .sources { margin: 4px 0 0; padding-left: 18px; }
 .sources li + li { margin-top: 4px; }
 .disclaimer { margin: 16px 0 0; color: var(--muted); font-size: 13px; }
+/* 한 달 체크. 고르는 말 다섯 개가 문항을 내려가는 동안에도 보이도록 번호 칸 위에 붙여 둔다 */
+.bat-list { margin-top: 4px; }
+.bat-intro { margin: 0 0 6px; line-height: 1.6; }
+.bat-legend { position: sticky; top: calc(60px + var(--warn-h, 0px) + env(safe-area-inset-top)); z-index: 8; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 12px 0 4px; padding: 6px 4px; background: var(--surface); color: var(--ink-2); font-size: 12px; line-height: 15px; text-align: center; box-shadow: 0 1px 0 var(--grid); }
+.bat-legend span { padding: 0 2px; word-break: keep-all; }
+.bat-legend b { display: block; color: var(--ink); font-variant-numeric: tabular-nums; }
+html:has(.bat-legend) { scroll-padding-top: calc(132px + var(--warn-h, 0px) + env(safe-area-inset-top)); }
+.bat-row { padding: 12px 0; }
+.bat-row + .bat-row { border-top: 1px solid var(--grid); }
+.bat-q { margin: 0 0 8px; line-height: 1.5; }
+.bat-row .seg-btn { font-variant-numeric: tabular-nums; scroll-margin-top: 88px; } /* 뒤로 옮겨 가도 문항 글이 고르는 말 밑에 가리지 않게 */
+.bat-left { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding-top: 12px; border-top: 1px solid var(--grid); }
+.bat-left .hint { margin: 0; }
+.bat-band { margin: 0 0 6px; }
+.bat-band .fact { display: inline-block; color: var(--ink); font-size: 15px; font-weight: 600; }
+.bat-result .sub { margin-bottom: 12px; }
+.bat-mean { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0 0 10px; color: var(--ink-2); font-size: 14px; font-weight: 500; }
+.bat-mean b { color: var(--ink); font-size: 28px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.bat-mean small { color: var(--muted); font-size: 13px; }
+.bat-result .lead { margin: 12px 0 0; }
+.bat-help { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 0 4px; }
+.bat-help .hint { flex: 1 1 180px; margin: 0; }
+.bat-past summary { cursor: pointer; color: var(--ink-2); font-size: 14px; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+.bat-past[open] summary { margin-bottom: 8px; }
+#bat-result:focus { outline: none; }
+
 .contacts { display: grid; gap: 8px; }
 .contact { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; min-height: 64px; padding: 10px 34px 10px 16px; border-radius: 20px; background: var(--surface-2); text-decoration: none; }
 .contact .grow { flex: 1 1 130px; }

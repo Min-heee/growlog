@@ -340,7 +340,7 @@ test('백업에는 표시와 돌아보기가 함께 들어가고, 잘못된 값�
   assert.equal(bad.marks[0].fuzz, 0);
   assert.equal(bad.marks[0].closedOn, undefined);
   assert.deepEqual(bad.weekly, {});
-  assert.deepEqual(bad.profile, { role: 'other', age: 'adult', hide: false });
+  assert.deepEqual(bad.profile, { role: 'other', age: 'adult', hide: false, monthlyOff: false });
   assert.equal(bad.supportSeen, 0);
 });
 

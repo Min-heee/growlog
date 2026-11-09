@@ -7,7 +7,7 @@
 - **Keep the model simple.** It has one fixed-decay strain stock, a sleep-debt stock and a hard-day count, all compared with the person's own usual.
 - **Learn from marked days slowly.** One or two marks change nothing. Three show a range. Five move the line, and the population default keeps half the weight at that point.
 - **Show flags in the app only.** Flags are never pushed. Help contacts are always visible and never depend on a score.
-- **Add one validated questionnaire at most.** The CBI personal scale, monthly, is the candidate, and it cannot ship until the Korean wording is cleared in writing.
+- **Add one questionnaire at most.** The monthly check uses the official Korean BAT-23 (work version) for working adults, with the pooled 2023 lines. The 23-item Korean form has no Korean validation of its own: Cho (2020) validated 22 items after dropping item 9. The CBI was dropped because its Korean wording needs written permission. See evidence.md, 한 달 체크.
 
 **Citation key.** Claim ids repeat across topics, so they are prefixed here:
 - `INS-` means instruments.
@@ -49,9 +49,9 @@ Anything without a claim id is labelled **product choice**, with a reason.
 - Korean regulatory exposure rises when a product points at a disease. The KCD listing of Z73.0 was seen only on a weak source, but it is reason enough not to name the index as a burnout measure (S4).
 
 **Where "burnout" (번아웃) may appear**
-1. On the About page, in a sentence saying the app does not measure or diagnose it.
+1. On the About page and the recovery page claim, in a sentence saying the app does not diagnose it.
 2. In one helper line under the day marker: "번아웃처럼 느껴진 날도 여기에 표시해 주세요." The label itself stays the person's own experience, 지친 날 (S5). This line is a **product choice**, because it uses the user's own word without confirming anything. Have counsel review it.
-3. Inside the required citation for the CBI (INS-I6).
+3. Inside the citations shown in the monthly check (the BAT and K-BAT titles). The check's own copy does not use the word.
 
 "Burnout" must not appear in the index name, band labels, notifications, store text, landing page or share images (S1, S6).
 
@@ -162,9 +162,9 @@ This is the direct answer to "how much had built up when it arrived".
 
 | Instrument | License status (exact) | Decision |
 |---|---|---|
-| **CBI personal, 6 items** | NFA says it may be used freely for non-commercial and commercial purposes if the source is clearly cited. No fee or request is mentioned. The page is silent on adaptation and translation (INS-I6). | **Conditional v1 candidate**, monthly and optional |
-| BAT-23 Korean | Free without requesting permission, must not be modified, citation required (INS-I10). Official Korean file has 23 core items, Cho's validated form has 22 (INS-I15). | Not v1. Long, work-worded, and no Korean student form (INS-I2). |
-| BAT-12, BAT4 | BAT4 is for group screening with no cut-offs in the development paper (INS-I14). Item subsets and rewording fall outside the BAT terms (INS-I10). | Not v1 |
+| CBI personal, 6 items | NFA says it may be used freely for non-commercial and commercial purposes if the source is clearly cited. No fee or request is mentioned. The page is silent on adaptation and translation (INS-I6). | Dropped. Korean wording needs written permission; 한 달 체크 uses the BAT-23. |
+| **BAT-23 Korean** | Free without requesting permission, must not be modified, citation required (INS-I10). The user manual allows online use with automatic scores. Official Korean file has 23 core items, Cho's validated form has 22 (INS-I15). | **Shipped as 한 달 체크**, monthly and optional, working adults only. No Korean student or general form exists (INS-I2). |
+| BAT-12, BAT4 | BAT-12 is the authors' own short form (asterisked items 1, 3, 4, 9, 11, 13, 14, 17, 18, 19, 20, 23), so using exactly those items is not a modification; self-chosen subsets and rewording are (INS-I10). BAT4 is for group screening with no cut-offs (INS-I14). | Not used. The user manual prefers the full version for individual feedback, and the BAT-12 red line differs between sources (2.96 vs 3.04), while the BAT-23 lines agree across the manual and the 2023 paper. All lines are preliminary. |
 | MBI | Research-only licence bars individual feedback. Paid reports exist through Mind Garden's hosting. No page addresses apps (INS-I3). | Excluded. Do not paraphrase. |
 | OLBI | No official licence found (INS-I17) | Excluded |
 | SMBM | Noncommercial educational or research only, with results-sharing conditions (INS-I18) | Excluded |
@@ -173,6 +173,8 @@ This is the direct answer to "how much had built up when it arrived".
 | WHO-5 | CC BY-NC-SA 3.0 IGO, with commercial use by WHO request. Korean evidence found only in adults over 65 (S22). | Later candidate |
 | PHQ-9, GAD-7 | Not reviewed for licence | Do not embed (S9) |
 | KBOSS | Licence unknown (INS-I16) | Excluded |
+
+*Historical: the CBI plan below was not shipped.*
 
 **Why CBI personal:** it is the only measure with an explicit commercial-use statement, and its personal scale has no work wording, so it fits students and non-workers better (INS-I6, INS-I7). A Korean version exists, but in homecare workers, and the article mentions no permission from the CBI authors (INS-I9).
 
@@ -187,9 +189,9 @@ This is the direct answer to "how much had built up when it arrived".
 
 **If any permission fails:** ship without it. The weekly items stay as they are.
 
-**Cadence:** every 28 days at most. Monthly repetition is an inference from BAT stability (INS-I20). CBI responsiveness has not been shown (INS-I5).
+**Cadence:** a new check opens 28 days after the last completed check started. **Product choice**: no source recommends a repeat interval, and the 1-month (Japan, .64) and 6-month (Flanders, .74) stabilities come from different samples (INS-I20, INS-I30). Responsiveness has not been shown for any burnout measure (INS-I5).
 
-**Display:** compare only with the person's own past scores. Danish and homecare means are context, not norms (INS-I7, INS-I9). Report a change only after 4 checks, and only when it exceeds `1.96 × √2 × SD` of the user's earlier monthly scores (INS-I20).
+**Display (CBI plan, superseded by the BAT check in evidence.md):** compare only with the person's own past scores. Danish and homecare means are context, not norms (INS-I7, INS-I9). Report a change only after 4 checks, and only when it exceeds `1.96 × √2 × SD` of the user's earlier monthly scores (INS-I20).
 
 ---
 
@@ -641,7 +643,7 @@ Stages count logged entries. Milestones at 7, 14 and 28 make personalization vis
 | Marks overlay | 3 or more episodes | Snapshot ranges, for example: 표시한 3번, 그 전 2주 동안 힘든 날 6~9일 | Personal line until nEff ≥ 5 | "3번뿐이라 규칙이라고 말할 수 없어요." Ranges with n. |
 
 **Display rules**
-- No 0-100 number. A number presented as an objective reading is not neutral (S17). No single number on a red line (INS-I4).
+- No 0-100 number. A number presented as an objective reading is not neutral (S17). No single number on a red line (INS-I4). The one exception is the monthly BAT-23 mean, shown against its published lines in neutral styling with the owner's request as the reason.
 - Show the score as a summary of what the user entered. No red and no warning styling (S15).
 - Lead with what helped, such as restful days (S15).
 - Do not draw a personal line until 3 episodes exist, and then draw a band, not a line. Never phrase it as a countdown (S15).
@@ -669,7 +671,7 @@ The wording is supportive and based on what was logged, not a generic high-score
 | H1 | At least 10 of the last 14 calendar days logged, and at least 75% of logged days have mood ≤2 or energy ≤2 | Convention from the two-week duration wording (S22). No validated threshold exists. Uses absolute ratings so a low baseline cannot hide it. |
 | H2 | Flag active for 14 consecutive days | **Product choice**: sustained pattern |
 | H3 | Severity 3 saved | **Product choice**: the user reports stopping daily life |
-| H4 | Monthly check ≥75 once, or ≥50 on two consecutive checks | INS-I8, softened, since the top band has no criterion validation. Two checks because about one in five exceed 50 (INS-I7). |
+| H4 | Monthly BAT check, shown only while the check itself is shown (working adult, not hidden): the latest completed check started within 28 days, and it is at 3.02 or over, or it and the check before it are both at 2.59 or over. No number, line or band name in the text. | Pooled 2023 lines. Two checks because one result near a line can flip by measurement error alone. |
 | H5 | 회복 중 open for 28 days | **Product choice**. Long courses exist in severe cases (THR-I16). |
 | H6 | Under 18 and 7-night mean time in bed <5 h, with at least 5 nights logged | THR-I12 |
 
@@ -751,7 +753,7 @@ Prefer 오늘의 부하와 회복, 내 평소와 비교, 쉬어가기 제안, �
 | 9 | Korean and role fit is unknown | No Korean norms for BAT, CBI or PSS. Developers were not studied in any source. No validated Korean daily exhaustion measure. Student evidence is thin. Thresholds moved between neighbouring European countries (INS-I13). | Rely on within-person change. |
 | 10 | Meaning of ratings may drift | Whether a person's "4 out of 5" shifts over months is unknown. | Offer 다시 시작. Avoid year-long comparisons in v1. |
 | 11 | Legal position is inferred | No MFDS ruling on a burnout index, stress score or personal threshold (S4). No PIPC ruling on on-device apps (S10). Labor law text was seen third-hand (THR-I10). The 2026 PIPC guideline was seen through law-firm summaries (S11). | Pre-launch review. Keep worker notes gated until the wording is confirmed. |
-| 12 | Licence gaps | CBI Korean rights are unresolved (INS-I6, INS-I9). Whether the official K-BAT matches Cho's form is unverified (INS-I15). | Ship without the questionnaire if unresolved. |
+| 12 | Licence gaps | CBI Korean rights are unresolved (INS-I6, INS-I9). The official K-BAT file matches Cho's pre-analysis translation (21 of 22 retained items identical, item 3 differs by one particle), but no source says whether Cho or KSIOP hold rights in the Korean wording, and the article is CC BY-NC 4.0 (INS-I26). | Ask Cho, the Korea consortium member, before a wide launch. Remove 한 달 체크 if the answer is no. |
 | 13 | Data loss on the phone | localStorage can be cleared. Whether a plain user export raises any issue was not resolved (S2). | Warn users. Decide on a plain export with counsel. |
 | 14 | Load is under-recorded | Only logged minutes count. The hours evidence covers paid work only (THR-I7). | Worker notes are opt-in and labelled as logged hours. |
 

@@ -3,9 +3,10 @@ import { fromKey } from './dates.js';
 import { sendToApp, uid } from './util.js';
 
 const KEY = 'growlog:v1';
-// 기록 형식. 2부터 영역 종류 varies와 기록의 feel이 있다. 형식을 바꾸면 sw.js의 '기록 형식' 줄도 고쳐야 새 서비스 워커가 설치되고,
+// 기록 형식. 2부터 영역 종류 varies와 기록의 feel이 있고, 3부터 한 달 체크(monthly)가 있다. 형식을 바꾸면 sw.js의 '기록 형식' 줄도 고쳐야 새 서비스 워커가 설치되고,
 // 옛 코드가 떠 있는 창을 모두 다시 연다. 옛 코드는 모르는 값을 지우고 저장하기 때문이다.
-export const VERSION = 2;
+export const VERSION = 3;
+export const BAT_ITEMS = 23; // 한 달 체크 문항 수. 바꾸면 저장된 체크가 모두 버려지니, 옮기는 코드를 함께 써야 한다
 export const MAX_AREAS = 8;
 export const AREA_COLORS = 10; // 영역마다 1~10번 색 가운데 하나를 고른다. 영역끼리는 겹치지 않는다
 const COLOR_IDS = Array.from({ length: AREA_COLORS }, (_, i) => i + 1);
@@ -25,7 +26,8 @@ export function createDefaultState() {
     checkins: {}, // 날짜 → { energy, stress, mood, detach, note }
     marks: [], // 지친 날 { id, date, sev, fuzz, tag, closedOn, createdAt } 또는 새 평소 { id, date, rebase, closedOn, createdAt }
     weekly: {}, // 그 주의 월요일 → { built, distance, done, on }
-    profile: { role: 'other', age: 'adult', hide: false },
+    monthly: {}, // 한 달 체크를 시작한 날 → { a: 23문항의 답(1~5, 아직 안 고른 칸은 null) }
+    profile: { role: 'other', age: 'adult', hide: false, monthlyOff: false },
     supportSeen: 0, // 도움 안내를 마지막으로 닫은 시각
     sleepGoal: 7,
     theme: 'dark',
@@ -114,10 +116,22 @@ function cleanMark(m) {
   return compact({ ...base, sev: m.sev, fuzz: [3, 7].includes(m.fuzz) ? m.fuzz : 0, tag: MARK_TAGS.includes(m.tag) ? m.tag : undefined });
 }
 
+/** 한 달 체크는 답만 남긴다. 문항 수가 다르거나 하나도 답하지 않은 기록은 버린다 */
+function cleanMonthly(map) {
+  if (!isMap(map)) return {};
+  return Object.fromEntries(
+    Object.entries(map)
+      .filter(([date, value]) => isDate(date) && isMap(value) && Array.isArray(value.a) && value.a.length === BAT_ITEMS)
+      .map(([date, value]) => [date, { a: value.a.map((x) => rating(x) ?? null) }])
+      .filter(([, value]) => value.a.some((x) => x !== null)),
+  );
+}
+
 const cleanProfile = (p) => ({
   role: ROLES.includes(p?.role) ? p.role : 'other',
   age: AGES.includes(p?.age) ? p.age : 'adult',
   hide: p?.hide === true,
+  monthlyOff: p?.monthlyOff === true,
 });
 
 function cleanByDate(map, clean) {
@@ -142,6 +156,7 @@ export function normalize(data) {
     checkins: cleanByDate(data.checkins, (c) => ({ energy: rating(c.energy), stress: rating(c.stress), mood: rating(c.mood), detach: rating(c.detach), note: text(c.note, 200) })),
     marks: Array.isArray(data.marks) ? data.marks.map(cleanMark).filter(Boolean) : [],
     weekly: cleanByDate(data.weekly, (w) => ({ built: rating(w.built), distance: rating(w.distance), done: rating(w.done), on: isDate(w.on) ? w.on : undefined })),
+    monthly: cleanMonthly(data.monthly),
     profile: cleanProfile(data.profile),
     supportSeen: number(data.supportSeen, 0, Number.MAX_SAFE_INTEGER) ?? 0,
     sleepGoal: number(data.sleepGoal, 4, 12) ?? base.sleepGoal,
@@ -335,6 +350,15 @@ export function addRebase(date) {
 export const setWeekly = (week, patch) =>
   commit((s) => {
     s.weekly[week] = { ...s.weekly[week], ...patch };
+  });
+/** 한 달 체크의 한 문항에 답한다. date는 화면이 고른 기록의 날짜다. 새 기록을 만들 때는 끝내지 못하고 남은 기록을 지운다 */
+export const setMonthly = (date, index, value) =>
+  commit((s) => {
+    if (!isDate(date) || !Number.isInteger(index) || index < 0 || index >= BAT_ITEMS || !rating(value)) return;
+    if (!s.monthly[date]) for (const [key, check] of Object.entries(s.monthly)) if (check.a.includes(null)) delete s.monthly[key];
+    const a = [...(s.monthly[date]?.a ?? Array(BAT_ITEMS).fill(null))];
+    a[index] = value;
+    s.monthly[date] = { a };
   });
 export const setProfile = (patch, opts) =>
   commit((s) => {
