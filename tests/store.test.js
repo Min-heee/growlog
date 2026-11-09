@@ -322,3 +322,162 @@ test('한 달 체크에 답하면 그 기록에 쌓이고, 새로 시작하면 �
   store.setMonthly('2026-11-09', 0, 5);
   assert.deepEqual(Object.keys(disk().monthly), ['2026-11-09']);
 });
+
+test('계획은 틀린 값을 고치거나 버리고, 계획이 없는 기록은 빈 목록으로 읽는다', async () => {
+  const { store } = await boot();
+  const plans = [
+    { id: 'a', title: '  장보기  ', date: '2026-11-10', done: ['2026-11-10', '2026-11-11'], color: 'red', createdAt: 5 },
+    { id: 'a', title: '같은 id', date: '2026-11-10' },
+    { id: 'b', title: '', date: '2026-11-10' },
+    { id: 'c', title: '날짜 아님', date: '2026-13-01' },
+    { id: 'd', title: '요일 없음', date: '2026-11-10', repeat: { days: [9, 'x'] }, done: ['2026-11-10', '2026-11-12'] },
+    { id: 'e', title: 'x'.repeat(61), date: '2026-11-02', time: '25:00', minutes: 2000, areaId: 7, repeat: { days: [5, 1, 3, 3], skip: ['2026-11-04', '2026-11-06', '2026-10-30'] }, done: ['2026-11-06', '2026-11-01', '2026-11-09'] },
+    { id: 'f', title: '끝난 반복', date: '2026-11-05', repeat: { days: [1], until: '2026-11-01', skip: [] }, done: [] },
+    { id: 'g', title: '분 0', date: '2026-11-10', minutes: 0, time: '07:30', areaId: 'x' },
+  ];
+  const normal = store.normalize({ ...seeded(), version: 3, plans });
+  assert.deepEqual(normal.plans.map((p) => p.id), ['a', 'd', 'e', 'f', 'g']);
+  assert.deepEqual(normal.plans[0], { id: 'a', title: '장보기', date: '2026-11-10', done: ['2026-11-10'], createdAt: 5 });
+  assert.deepEqual(normal.plans[1], { id: 'd', title: '요일 없음', date: '2026-11-10', done: ['2026-11-10'], createdAt: new Date(2026, 10, 10).getTime() });
+  const e = normal.plans[2];
+  assert.equal(e.title.length, 60);
+  assert.equal('time' in e || 'minutes' in e || 'areaId' in e, false);
+  assert.deepEqual(e.repeat, { days: [1, 3, 5], skip: ['2026-11-04'] }); // 했어요와 같은 날의 쉬어 가요, 시작 전 날은 버린다
+  assert.deepEqual(e.done, ['2026-11-06', '2026-11-09']);
+  assert.equal(normal.plans[3].repeat.until, '2026-11-05'); // 끝난 반복이 끝없는 반복으로 되살아나지 않는다
+  assert.deepEqual(normal.plans[4], { id: 'g', title: '분 0', date: '2026-11-10', time: '07:30', areaId: 'x', done: [], createdAt: new Date(2026, 10, 10).getTime() });
+  assert.deepEqual(store.normalize(seeded()).plans, []);
+  assert.deepEqual(store.normalize({ ...seeded(), version: 3, plans: 'x' }).plans, []);
+  assert.equal(store.isBackup({ ...seeded(), plans }), true);
+});
+
+test('계획 변경은 저장이 막혔다가 돌아와 다시 적용돼도 한 번만 일어난다', async () => {
+  const { store, gate, disk } = await boot(seeded());
+  gate.writes = false;
+  const id = store.addPlan({ title: '운동', date: '2026-11-02', days: [1, 3, 5], areaId: 'a' });
+  const once = store.addPlan({ title: '장보기', date: '2026-11-10' });
+  store.setPlanDone(id, '2026-11-02', true);
+  store.setPlanDone(id, '2026-11-03', true); // 잡힌 날이 아니다
+  store.skipPlan(id, '2026-11-04', true);
+  store.setPlanDone(id, '2026-11-04', true); // 쉬던 날에 했어요
+  store.skipPlan(id, '2026-11-06', true);
+  store.editPlan(id, { title: '저녁 운동', time: '19:00' });
+  store.editPlan(once, { date: '2026-11-12' });
+  for (let i = 0; i < 3; i++) store.retrySave(); // 막힌 동안 여러 번 다시 해도
+  gate.writes = true;
+  store.retrySave();
+  const plans = disk().plans;
+  assert.equal(plans.length, 2);
+  assert.deepEqual(plans[0].done, ['2026-11-02', '2026-11-04']);
+  assert.deepEqual(plans[0].repeat.skip, ['2026-11-06']);
+  assert.equal(plans[0].title, '저녁 운동');
+  assert.equal(plans[1].date, '2026-11-12');
+  assert.equal(store.endPlan(id, '2026-11-10', '2026-11-10'), 'ended');
+  assert.equal(disk().plans[0].repeat.until, '2026-11-09');
+  store.setPlanDone(id, '2026-11-02', false);
+  store.setPlanDone(id, '2026-11-04', false);
+  assert.equal(store.endPlan(id, '2026-11-10', '2026-11-10'), 'removed'); // 한 번도 하지 않은 반복은 지운다
+  assert.deepEqual(disk().plans.map((p) => p.title), ['장보기']);
+});
+
+test('다른 탭이 먼저 체크하거나 요일을 바꿔도 결과가 맞다', async () => {
+  const { store, disk, otherTab } = await boot(seeded());
+  const id = store.addPlan({ title: '운동', date: '2026-11-02', days: [1] });
+  otherTab((s) => {
+    s.plans[0].done = ['2026-11-02'];
+  });
+  store.setPlanDone(id, '2026-11-02', true);
+  assert.deepEqual(disk().plans[0].done, ['2026-11-02']);
+  otherTab((s) => {
+    s.plans[0].repeat.days = [2];
+  });
+  store.setPlanDone(id, '2026-11-09', true); // 이제 월요일은 잡힌 날이 아니다
+  assert.deepEqual(disk().plans[0].done, ['2026-11-02']);
+});
+
+test('고친 값이 틀리면 계획을 그대로 두고, 지우기와 되돌리기는 두 번 눌러도 하나다', async () => {
+  const { store, disk } = await boot(seeded());
+  const id = store.addPlan({ title: '장보기', date: '2026-11-10' });
+  assert.equal(store.editPlan(id, { title: '' }), 'edited');
+  assert.equal(store.editPlan(id, { date: '' }), 'edited');
+  assert.equal(store.editPlan(id, { date: '2026-02-30' }), 'edited');
+  assert.deepEqual(disk().plans.map((p) => [p.title, p.date]), [['장보기', '2026-11-10']]);
+  assert.equal(store.editPlan('없음', { title: 'x' }), null);
+  const before = structuredClone(store.getState().plans[0]);
+  store.replacePlans([id], []);
+  assert.equal(disk().plans.length, 0);
+  store.replacePlans([], [before]);
+  store.replacePlans([], [before]);
+  assert.equal(disk().plans.length, 1);
+  assert.equal(store.addPlan({ title: '  ', date: '2026-11-10' }), null);
+  assert.equal(store.addPlan({ title: '날짜', date: '2026-11-31' }), null);
+  assert.equal(store.addPlan({ id, title: '같은 id', date: '2026-11-10' }), id);
+  assert.equal(disk().plans.length, 1);
+});
+
+test('계획에서 남긴 기록은 planId를 갖고, 이미 다른 계획과 이은 기록은 바꾸지 않는다', async () => {
+  const { store, disk } = await boot(seeded());
+  store.addPlan({ id: 'p1', title: '하나', date: '2026-10-02' });
+  store.addPlan({ id: 'p2', title: '둘', date: '2026-10-02' });
+  store.addEntry({ id: 'n1', date: '2026-10-02', areaId: 'a', minutes: 30, planId: 'p1' });
+  store.addEntry({ id: 'n2', date: '2026-10-02', areaId: 'a', minutes: 30, planId: '' });
+  store.addEntry({ id: 'n3', date: '2026-10-02', areaId: 'a', minutes: 30 });
+  const byId = (id) => disk().entries.find((e) => e.id === id);
+  assert.equal(byId('n1').planId, 'p1');
+  assert.equal('planId' in byId('n2'), false);
+  store.linkEntry('n3', 'p2');
+  store.linkEntry('n1', 'p2');
+  assert.equal(byId('n3').planId, 'p2');
+  assert.equal(byId('n1').planId, 'p1');
+  store.unlinkEntry('n3', 'p1');
+  assert.equal(byId('n3').planId, 'p2');
+  store.unlinkEntry('n3', 'p2');
+  assert.equal('planId' in byId('n3'), false);
+  assert.equal(store.normalize(disk()).entries.find((e) => e.id === 'n1').planId, 'p1');
+});
+
+test('영역을 지우면 계획은 남고 연결만 빠지며, 모두 지우면 계획도 비운다', async () => {
+  const { store, disk } = await boot(seeded());
+  store.addPlan({ title: '일', date: '2026-11-10', areaId: 'a', minutes: 30 });
+  store.removeArea('a');
+  assert.deepEqual(disk().plans.map((p) => [p.title, 'areaId' in p, p.minutes]), [['일', false, 30]]);
+  store.resetState();
+  assert.deepEqual(disk().plans, []);
+});
+
+test('샘플에는 계획 4개가 있고, 이어 둔 기록은 그날 그 영역 기록이다', async () => {
+  const { store } = await boot();
+  const { buildSample } = await import('../js/sample.js');
+  const sample = store.normalize(buildSample());
+  assert.equal(sample.plans.length, 4);
+  for (const entry of sample.entries.filter((e) => e.planId)) {
+    const plan = sample.plans.find((p) => p.id === entry.planId);
+    assert.equal(plan.areaId, entry.areaId);
+    assert.ok(plan.done.includes(entry.date));
+  }
+  assert.ok(sample.plans[0].repeat.skip.length === 1);
+});
+
+test('끝낸 계획의 마지막 했어요를 풀거나 요일을 바꿔 보이지 않게 되면 지운다', async () => {
+  const { store, disk } = await boot(seeded());
+  const id = store.addPlan({ title: '운동', date: '2026-11-02', days: [1, 3, 5] });
+  store.setPlanDone(id, '2026-11-02', true);
+  assert.equal(store.endPlan(id, '2026-11-03', '2026-11-03'), 'ended'); // until 11-02
+  assert.equal(store.editPlan(id, { days: [2] }), 'edited'); // 했어요가 남아 있어 보인다
+  store.setPlanDone(id, '2026-11-02', false);
+  assert.equal(disk().plans.length, 0);
+  const other = store.addPlan({ title: '산책', date: '2026-11-09', days: [1] });
+  assert.equal(store.endPlan(other, '2026-11-10', '2026-11-09'), 'ended'); // 11-09 하루만 남는다
+  assert.equal(store.editPlan(other, { days: [2] }), 'removed');
+  assert.equal(disk().plans.length, 0);
+});
+
+test('지운 계획을 가리키는 기록은 다른 계획과 다시 이을 수 있다', async () => {
+  const { store, disk } = await boot(seeded());
+  const first = store.addPlan({ title: '러닝', date: '2026-10-02', areaId: 'a' });
+  store.addEntry({ id: 'r1', date: '2026-10-02', areaId: 'a', minutes: 40, planId: first });
+  store.replacePlans([first], []);
+  const second = store.addPlan({ title: '러닝', date: '2026-10-02', areaId: 'a' });
+  store.linkEntry('r1', second);
+  assert.equal(disk().entries.find((e) => e.id === 'r1').planId, second);
+});

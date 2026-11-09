@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="description" content="운동·공부·개발·수면·회복을 한곳에서 기록하는 자기계발 도구">
+  <meta name="description" content="운동·공부·수면·회복과 계획을 한곳에서 챙기는 자기계발 도구">
   <title>그로우로그</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -36,6 +36,10 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.5"/></svg>
         <span>오늘</span>
       </a>
+      <a class="tab" href="#/calendar" data-nav="calendar">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5.5" width="16" height="14.5" rx="3"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></svg>
+        <span>달력</span>
+      </a>
       <a class="tab" href="#/timer" data-nav="timer">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.5 2M9.5 2.5h5"/></svg>
         <span>타이머</span>
@@ -58,5 +62,6 @@
   </div>
   <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="announce" class="sr-only" aria-live="polite"></div>
 </body>
 </html>

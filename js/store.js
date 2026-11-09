@@ -1,9 +1,10 @@
 // 앱 데이터 저장소: 브라우저 localStorage에 저장하고, 바뀌면 구독한 화면에 알린다.
 import { fromKey } from './dates.js';
+import { applyEdit, endFrom, isHidden, scheduled } from './plans.js';
 import { sendToApp, uid } from './util.js';
 
 const KEY = 'growlog:v1';
-// 기록 형식. 2부터 영역 종류 varies와 기록의 feel이 있고, 3부터 한 달 체크(monthly)가 있다. 형식을 바꾸면 sw.js의 '기록 형식' 줄도 고쳐야 새 서비스 워커가 설치되고,
+// 기록 형식. 2부터 영역 종류 varies와 기록의 feel이 있고, 3부터 한 달 체크(monthly)와 계획(plans, 기록의 planId)이 있다. 형식을 바꾸면 sw.js의 '기록 형식' 줄도 고쳐야 새 서비스 워커가 설치되고,
 // 옛 코드가 떠 있는 창을 모두 다시 연다. 옛 코드는 모르는 값을 지우고 저장하기 때문이다.
 export const VERSION = 3;
 export const BAT_ITEMS = 23; // 한 달 체크 문항 수. 바꾸면 저장된 체크가 모두 버려지니, 옮기는 코드를 함께 써야 한다
@@ -21,12 +22,13 @@ export function createDefaultState() {
   return {
     version: VERSION,
     areas: [], // 무엇을 기록할지는 사용자가 직접 만든다
-    entries: [], // { id, date, areaId, minutes, title, source: 'manual'|'timer', createdAt, feel?: 'fill'|'same'|'drain' }
+    entries: [], // { id, date, areaId, minutes, title, source: 'manual'|'timer', createdAt, feel?: 'fill'|'same'|'drain', planId? }
     sleep: {}, // 일어난 날짜 → { bed, wake, quality }
     checkins: {}, // 날짜 → { energy, stress, mood, detach, note }
     marks: [], // 지친 날 { id, date, sev, fuzz, tag, closedOn, createdAt } 또는 새 평소 { id, date, rebase, closedOn, createdAt }
     weekly: {}, // 그 주의 월요일 → { built, distance, done, on }
     monthly: {}, // 한 달 체크를 시작한 날 → { a: 23문항의 답(1~5, 아직 안 고른 칸은 null) }
+    plans: [], // 계획 { id, title, date, time?, minutes?, areaId?, repeat?: { days, until?, skip }, done, createdAt }
     profile: { role: 'other', age: 'adult', hide: false, monthlyOff: false },
     supportSeen: 0, // 도움 안내를 마지막으로 닫은 시각
     sleepGoal: 7,
@@ -92,7 +94,52 @@ function cleanEntry(e) {
     createdAt: number(e.createdAt, 0, Number.MAX_SAFE_INTEGER) ?? fromKey(e.date).getTime(),
   };
   if (FEELS.includes(e.feel)) entry.feel = e.feel;
+  if (shortId(e.planId)) entry.planId = e.planId; // 이 계획에서 남긴 기록. 계획을 지워도 남겨 두어 되돌리면 다시 이어진다. 화면은 지금 있는 계획일 때만 이어진 것으로 본다
   return entry;
+}
+
+// ---- 계획 ----
+// 깨진 백업을 막는 상한이다. 쓰다가 닿을 일은 없고, 그보다 먼저 저장 공간이 차면 지금처럼 저장 경고가 뜬다.
+const MAX_PLANS = 20000;
+const MAX_DAYS = 10000; // 계획마다 했어요·쉬어 가요 날짜 수. 매일 반복해도 27년
+const shortId = (v) => (typeof v === 'string' && v.length >= 1 && v.length <= 64 ? v : undefined);
+const dateSet = (v) => (Array.isArray(v) ? [...new Set(v.filter(isDate))].sort().slice(-MAX_DAYS) : []);
+
+function cleanPlan(p) {
+  if (!isMap(p) || !isDate(p.date)) return null;
+  const title = text(p.title, 60).trim();
+  if (!title) return null;
+  const { date } = p;
+  const done = dateSet(p.done).filter((d) => d >= date);
+  let repeat;
+  if (isMap(p.repeat) && Array.isArray(p.repeat.days)) {
+    const days = [...new Set(p.repeat.days.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort((a, b) => a - b);
+    let until = isDate(p.repeat.until) ? p.repeat.until : undefined;
+    if (until && until < date) until = date; // 끝낸 계획이 끝없는 반복으로 되살아나지 않게 첫날까지로 둔다
+    // 같은 날이 했어요와 쉬어 가요 둘 다면 했어요를 남긴다
+    if (days.length) repeat = compact({ days, until, skip: dateSet(p.repeat.skip).filter((d) => d >= date && (!until || d <= until) && !done.includes(d)) });
+  }
+  const minutes = number(p.minutes, 1, 1440);
+  return compact({
+    id: shortId(p.id) ?? uid(),
+    title,
+    date,
+    time: clock(p.time),
+    minutes: minutes === null ? undefined : Math.round(minutes),
+    areaId: shortId(p.areaId), // 그 영역이 지금 없어도 남긴다
+    repeat,
+    done: repeat ? done : done.filter((d) => d === date), // 반복이면 요일을 바꿨어도 해낸 날은 남긴다
+    createdAt: number(p.createdAt, 0, Number.MAX_SAFE_INTEGER) ?? fromKey(date).getTime(),
+  });
+}
+
+function cleanPlans(list) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set(); // 같은 id가 다시 나오면 뒤엣것을 버린다
+  return list
+    .map(cleanPlan)
+    .filter((p) => p && !seen.has(p.id) && seen.add(p.id))
+    .slice(0, MAX_PLANS);
 }
 
 /** 예전에는 영역마다 '에너지를 채워요'를 정해뒀다. 그 영역은 그때그때 다른 일이 되고, 그동안의 기록과 앞으로의 처음 값은 채워졌어요로 친다. */
@@ -157,6 +204,7 @@ export function normalize(data) {
     marks: Array.isArray(data.marks) ? data.marks.map(cleanMark).filter(Boolean) : [],
     weekly: cleanByDate(data.weekly, (w) => ({ built: rating(w.built), distance: rating(w.distance), done: rating(w.done), on: isDate(w.on) ? w.on : undefined })),
     monthly: cleanMonthly(data.monthly),
+    plans: cleanPlans(data.plans),
     profile: cleanProfile(data.profile),
     supportSeen: number(data.supportSeen, 0, Number.MAX_SAFE_INTEGER) ?? 0,
     sleepGoal: number(data.sleepGoal, 4, 12) ?? base.sleepGoal,
@@ -288,9 +336,9 @@ export const areaById = (id, s = state) => s.areas.find((a) => a.id === id);
 
 // ---- 활동 기록 ----
 /** 기록을 남기고 id를 돌려준다. feel은 그때그때 다른 일에만 붙인다. */
-export function addEntry({ id = uid(), date, areaId, minutes, title = '', source = 'manual', createdAt = Date.now(), feel }, opts) {
+export function addEntry({ id = uid(), date, areaId, minutes, title = '', source = 'manual', createdAt = Date.now(), feel, planId }, opts) {
   // 저장에 실패하면 다시 적용될 수 있으니 id는 변경 밖에서 정한다
-  const entry = { id, date, areaId, minutes: Math.round(minutes), title: title.trim(), source, createdAt, ...(FEELS.includes(feel) && { feel }) };
+  const entry = { id, date, areaId, minutes: Math.round(minutes), title: title.trim(), source, createdAt, ...(FEELS.includes(feel) && { feel }), ...(shortId(planId) && { planId }) };
   commit((s) => void s.entries.push({ ...entry }), opts);
   return entry.id;
 }
@@ -360,6 +408,93 @@ export const setMonthly = (date, index, value) =>
     a[index] = value;
     s.monthly[date] = { a };
   });
+
+// ---- 계획 ----
+// 저장하지 못하면 변경 함수가 디스크의 최신 값 위에 다시 적용되므로, 뒤집지 않고 목표 값을 받고 같은 id는 두 번 넣지 않는다.
+const planById = (s, id) => s.plans.find((p) => p.id === id);
+
+/** 계획을 더하고 id를 돌려준다. 제목이나 날짜가 틀리면 null */
+export function addPlan({ id = uid(), title, date, time, minutes, areaId, days = [], createdAt = Date.now() }) {
+  const plan = cleanPlan({ id, title, date, time, minutes, areaId, repeat: days.length ? { days, skip: [] } : undefined, done: [], createdAt });
+  if (!plan) return null;
+  commit((s) => {
+    if (!planById(s, plan.id)) s.plans.push(structuredClone(plan));
+  });
+  return planById(state, plan.id) ? plan.id : null;
+}
+/** 그날 했어요(done = true) 또는 풀기. 잡힌 날에만 체크한다. 쉬어 가요였던 날을 체크하면 쉬기를 푼다 */
+export const setPlanDone = (id, day, done) =>
+  commit((s) => {
+    const plan = planById(s, id);
+    if (!plan || !isDate(day)) return;
+    if (!done) {
+      plan.done = plan.done.filter((d) => d !== day);
+      if (isHidden(plan)) s.plans = s.plans.filter((p) => p !== plan); // 끝낸 계획의 마지막 했어요를 풀어 어디에도 보이지 않게 됐다
+    } else if (!plan.done.includes(day) && scheduled(plan, day)) {
+      plan.done = [...plan.done, day].sort();
+      if (plan.repeat) plan.repeat.skip = plan.repeat.skip.filter((d) => d !== day);
+    }
+  });
+/** 반복 계획의 그날을 쉬어 가요(skip = true) 또는 다시 할래요 */
+export const skipPlan = (id, day, skip) =>
+  commit((s) => {
+    const plan = planById(s, id);
+    if (!plan?.repeat || !isDate(day)) return;
+    if (!skip) plan.repeat.skip = plan.repeat.skip.filter((d) => d !== day);
+    else if (!plan.repeat.skip.includes(day) && scheduled(plan, day)) {
+      plan.repeat.skip = [...plan.repeat.skip, day].sort();
+      plan.done = plan.done.filter((d) => d !== day);
+    }
+  });
+/**
+ * 계획을 고친다(plans.js applyEdit). 고친 값이 틀리면 그대로 둔다.
+ * 끝낸 계획의 요일을 바꿔 어느 날에도 보이지 않게 되면 지운다. 'edited', 'removed', 또는 계획이 없으면 null
+ */
+export function editPlan(id, patch) {
+  if (!planById(state, id)) return null;
+  commit((s) => {
+    const i = s.plans.findIndex((p) => p.id === id);
+    const next = i < 0 ? null : cleanPlan(applyEdit(s.plans[i], patch));
+    if (next && isHidden(next)) s.plans.splice(i, 1);
+    else if (next) s.plans[i] = next;
+  });
+  return planById(state, id) ? 'edited' : 'removed';
+}
+/** 반복 계획을 from 전날까지만 남긴다(plans.js endFrom). 남길 날이 없으면 지운다. 'ended', 'removed', 또는 계획이 없으면 null */
+export function endPlan(id, from, today) {
+  if (!planById(state, id) || !isDate(from) || !isDate(today)) return null;
+  commit((s) => {
+    const i = s.plans.findIndex((p) => p.id === id);
+    if (i < 0) return;
+    const next = endFrom(s.plans[i], from, today);
+    const clean = next && cleanPlan(next);
+    if (clean) s.plans[i] = clean;
+    else s.plans.splice(i, 1);
+  });
+  return planById(state, id) ? 'ended' : 'removed';
+}
+/** removeIds를 지우고 plans를 id로 바꿔 끼우거나 넣는다. 지우기는 replacePlans([id], []), 되돌리기는 replacePlans([], [그때 값]) */
+export const replacePlans = (removeIds, plans) =>
+  commit((s) => {
+    s.plans = s.plans.filter((p) => !removeIds.includes(p.id));
+    for (const plan of plans) {
+      const i = s.plans.findIndex((p) => p.id === plan.id);
+      if (i < 0) s.plans.push(structuredClone(plan));
+      else s.plans[i] = structuredClone(plan);
+    }
+  });
+/** 이미 남긴 활동 기록을 계획과 잇는다. 지금 있는 다른 계획과 이어진 기록은 건드리지 않는다 */
+export const linkEntry = (entryId, planId) =>
+  commit((s) => {
+    const entry = s.entries.find((e) => e.id === entryId);
+    if (entry && shortId(planId) && (!entry.planId || entry.planId === planId || !planById(s, entry.planId))) entry.planId = planId;
+  });
+export const unlinkEntry = (entryId, planId) =>
+  commit((s) => {
+    const entry = s.entries.find((e) => e.id === entryId);
+    if (entry?.planId === planId) delete entry.planId;
+  });
+
 export const setProfile = (patch, opts) =>
   commit((s) => {
     s.profile = { ...s.profile, ...patch };
@@ -399,6 +534,7 @@ export const removeArea = (id) =>
   commit((s) => {
     s.areas = s.areas.filter((a) => a.id !== id);
     s.entries = s.entries.filter((e) => e.areaId !== id);
+    for (const plan of s.plans) if (plan.areaId === id) delete plan.areaId; // 계획은 남기고 연결만 뗀다
   });
 
 // ---- 설정·데이터 ----

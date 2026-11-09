@@ -87,5 +87,25 @@ export function buildSample(days = 98) {
     const on = addDays(today, -back);
     state.weekly[weekStartKey(on)] = { built: back === 7 ? 4 : 3, distance: back === 7 ? 4 : 2, done: back === 7 ? 2 : 4, on };
   }
+  state.plans = samplePlans(state, today);
   return state;
+}
+
+/** 계획 4개. 지난 날은 그날 남긴 같은 영역 기록이 있으면 했어요로 치고 그 기록과 잇는다. 난수를 쓰지 않아 다른 샘플 값은 그대로다 */
+function samplePlans(state, today) {
+  const start = addDays(today, -27);
+  const plan = (fields) => ({ id: uid(), done: [], createdAt: fromKey(fields.date).getTime(), ...fields });
+  const morning = plan({ title: '아침 운동', date: start, time: '07:00', minutes: 30, areaId: 'exercise', repeat: { days: [1, 3, 5], skip: [] } });
+  const words = plan({ title: '공부 시간', date: start, minutes: 60, areaId: 'study', repeat: { days: [1, 2, 3, 4, 5], skip: [] } });
+  for (const p of [morning, words]) {
+    for (let day = start; day < today; day = addDays(day, 1)) {
+      if (!p.repeat.days.includes(fromKey(day).getDay())) continue;
+      const entry = state.entries.find((e) => e.date === day && e.areaId === p.areaId && !e.planId);
+      if (entry) {
+        p.done.push(day);
+        entry.planId = p.id;
+      } else if (p === morning && !p.repeat.skip.length && day >= addDays(today, -13)) p.repeat.skip.push(day); // 바빴던 때 하루는 쉬어 갔다
+    }
+  }
+  return [morning, words, plan({ title: '장보기', date: today }), plan({ title: '친구 만나기', date: addDays(today, 1), time: '19:00' })];
 }

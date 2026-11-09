@@ -1,4 +1,4 @@
-// 오늘 화면: 컨디션·수면 체크인, 활동 기록, 이번 주 목표
+// 오늘 화면: 컨디션·수면 체크인, 오늘 계획(plan-card.js), 활동 기록, 이번 주 목표
 // 매일 한 번 하는 칸(컨디션, 수면)은 마치면 한 줄 요약으로 접고, 여러 번 하는 활동 기록은 늘 펼쳐 둔다
 import { activeAreas, addArea, addEntry, areaById, canAddArea, freeColors, getState, lastFeel, MAX_AREAS, resetState, setCheckin, setSleep, setSupportSeen } from '../store.js';
 import { addDays, fmtDay, fmtLong, rangeKeys, sleepHours, todayKey, weekStartKey } from '../dates.js';
@@ -6,7 +6,8 @@ import { BANDS, bandWord, insight } from '../insight.js';
 import { isIOS, isStandalone } from '../pwa.js';
 import { openMarkForm } from './recovery.js';
 import { avg, esc, fmtHM, fmtHours, sum } from '../util.js';
-import { areaColor, ask, colorChoices, entryList, fader, feelChoices, fieldSavedToast, ratingScale, refresh, savedToast, tickBar, toast } from '../ui.js';
+import { areaColor, ask, CHEV, colorChoices, entryList, fader, feelChoices, fieldSavedToast, ratingScale, refresh, savedToast, smooth, tickBar, toast } from '../ui.js';
+import { closePlanPanel, planCard, resetPlanDrafts } from '../plan-card.js';
 
 const SCALES = [
   { field: 'energy', label: '에너지', low: '바닥', high: '넘침' },
@@ -33,7 +34,6 @@ const KIND_NOTES = {
   varies: '운동, 게임, 취미처럼 기록할 때마다 끝나고 어땠는지 골라요.',
 };
 const LIST_FIRST = 3; // 오늘 한 일은 이만큼만 먼저 보여준다
-const CHEV = '<svg class="fold-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 
 // 입력 중인 내용은 화면을 다시 그려도 남아 있어야 한다
 // feel: { areaId, value }. 고른 영역이 어떤 길로 바뀌어도 다른 영역의 값이 넘어가지 않게 영역과 함께 둔다. 없으면 그 영역에서 지난번에 고른 값
@@ -58,7 +58,6 @@ let dayKeyAt = 0; // 날 고르기를 키보드로 다룬 때
 const KEYED_DAY = 10000; // 키를 누른 뒤 이 안에 날이 바뀌면 키보드로 고른 것으로 본다. 펼친 목록에서 고르는 시간까지 넉넉히 둔다
 const checkinDone = (c) => SCALES.every((s) => c?.[s.field] != null);
 const sleepDone = (night) => sleepHours(night?.bed, night?.wake) != null;
-const smooth = () => (matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
 
 /** 펼친 칸을 처음 상태로 돌린다. 날이 바뀌거나 기록을 지웠을 때 쓴다. */
 export function resetFolds() {
@@ -69,6 +68,7 @@ export function resetFolds() {
 export function enter() {
   daysBack = 0;
   resetFolds();
+  closePlanPanel();
 }
 
 /** 매일 할 일 가운데 처음 비어 있는 칸 하나만 연다. 이미 정한 칸은 건드리지 않는다. */
@@ -99,6 +99,7 @@ export function arrive() {
 export function resetTodayDrafts() {
   resetFolds();
   maker = { ...NEW_AREA };
+  resetPlanDrafts();
 }
 
 function loadHero(state, i) {
@@ -339,11 +340,12 @@ export function render(state) {
   const typing = document.activeElement?.matches?.('input, select, textarea') && document.activeElement.closest('[data-card="entry"]');
   if (!typing && !areas.some((a) => a.id === draft.areaId)) draft.areaId = areas[0]?.id ?? null;
   const i = insight(state, today);
-  // 맨 위 덩어리는 언제나 이 6개다. 입력 중에 다시 그릴 때(app.js renderAround) 덩어리 수가 같아야 입력칸이 없는 덩어리를 바꿔 끼울 수 있다.
+  // 맨 위 덩어리는 언제나 이 7개다. 입력 중에 다시 그릴 때(app.js renderAround) 덩어리 수가 같아야 입력칸이 없는 덩어리를 바꿔 끼울 수 있다.
   // 새 내용은 이 안에 넣고, 조건에 따라 생기고 사라지는 덩어리를 맨 위에 더하지 않는다.
   return `${notices(state, i)}
     <div data-slot="load">${loadHero(state, i)}</div>
     ${dailyCard(state, day)}
+    <div data-slot="plan">${planCard(state, today, { where: 'today', today })}</div>
     ${entryCard(state, areas, today)}
     <div data-slot="list">${todayList(state, today)}</div>
     <div data-slot="week">${weekCard(state, areas, today)}</div>`;

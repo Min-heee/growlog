@@ -197,7 +197,7 @@ async function importData() {
 function hasUserData() {
   const s = getState();
   const base = createDefaultState();
-  return s.entries.length > 0 || Object.keys(s.checkins).length > 0 || Object.keys(s.sleep).length > 0 || s.marks.length > 0 || Object.keys(s.weekly).length > 0 || Object.keys(s.monthly).length > 0 || s.sleepGoal !== base.sleepGoal || JSON.stringify(s.areas) !== JSON.stringify(base.areas);
+  return s.entries.length > 0 || Object.keys(s.checkins).length > 0 || Object.keys(s.sleep).length > 0 || s.marks.length > 0 || Object.keys(s.weekly).length > 0 || Object.keys(s.monthly).length > 0 || s.plans.length > 0 || s.sleepGoal !== base.sleepGoal || JSON.stringify(s.areas) !== JSON.stringify(base.areas);
 }
 
 async function loadSample() {
@@ -241,7 +241,9 @@ export const on = {
       const area = areaById(id);
       if (!area) return refresh(); // 진짜 기록을 다시 불러오니 없는 영역이었다
       const count = getState().entries.filter((x) => x.areaId === id).length;
-      if (await ask(`'${area.label}' 영역과 기록 ${count}개를 삭제할까요? 되돌릴 수 없어요.`, '삭제')) {
+      const plans = getState().plans.filter((p) => p.areaId === id).length;
+      const kept = plans ? ` 이어 둔 계획 ${plans}개는 남고 연결만 빠져요.` : '';
+      if (await ask(`'${area.label}' 영역과 기록 ${count}개를 삭제할까요? 되돌릴 수 없어요.${kept}`, '삭제')) {
         removeArea(id);
         savedToast('삭제했어요');
       }

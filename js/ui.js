@@ -11,6 +11,10 @@ export const setRefresher = (fn) => {
 export const refresh = (opts) => refresher(opts);
 
 export const areaColor = (area) => `var(--s${area?.color ?? 0})`;
+/** 접고 펴는 버튼 끝의 꺾쇠 */
+export const CHEV = '<svg class="fold-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+/** 움직임 줄이기를 켠 사람에게는 부드럽게 스크롤하지 않는다 */
+export const smooth = () => (matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
 
 const COLOR_NAMES = ['라임', '하늘', '보라', '주황', '분홍', '청록', '파랑', '빨강', '노랑', '회색'];
 /** 영역 색 고르기. 다른 영역이 쓰는 색은 누를 수 없다. id가 있으면 버튼에 data-id로 붙인다. */
@@ -73,21 +77,23 @@ export function fader({ field, label, low, high }, value, action) {
 
 const X_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
-function entryItem(entry, area) {
+function entryItem(entry, area, planIds) {
   const where = area ? `${area.emoji} ${area.label}` : '삭제된 영역';
   return `<li class="entry">
     <span class="dot" style="background:${areaColor(area)}"></span>
     <div class="entry-main">
       <span class="entry-title">${esc(entry.title || area?.label || '기록')}</span>
-      <span class="entry-meta">${esc(where)}${area?.kind === 'varies' && entry.feel ? ` · ${FEEL_LABELS[entry.feel]}` : ''}${entry.source === 'timer' ? ' · 타이머' : ''}</span>
+      <span class="entry-meta">${esc(where)}${area?.kind === 'varies' && entry.feel ? ` · ${FEEL_LABELS[entry.feel]}` : ''}${entry.source === 'timer' ? ' · 타이머' : ''}${entry.planId && planIds?.has(entry.planId) ? ' · 계획' : ''}</span>
     </div>
     <span class="entry-min">${fmtHM(entry.minutes)}</span>
     <button type="button" class="icon-btn" data-action="delete-entry" data-id="${esc(entry.id)}" aria-label="기록 삭제">${X_ICON}</button>
   </li>`;
 }
 
-export const entryList = (entries, state) =>
-  `<ul class="entries">${entries.map((e) => entryItem(e, state.areas.find((a) => a.id === e.areaId))).join('')}</ul>`;
+export function entryList(entries, state) {
+  const planIds = new Set(state.plans.map((p) => p.id)); // 지운 계획을 가리키는 기록에는 '계획'을 붙이지 않는다
+  return `<ul class="entries">${entries.map((e) => entryItem(e, state.areas.find((a) => a.id === e.areaId), planIds)).join('')}</ul>`;
+}
 
 let toastTimer = 0;
 export function toast(message, action) {

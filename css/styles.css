@@ -130,11 +130,11 @@ a, button, label { touch-action: manipulation; } /* 두 번 탭 확대 지연 �
 /* 홈 화면 앱으로 실행할 때: 당겨서 새로고침과 글자 선택을 막아 앱처럼 동작하게 한다 */
 @media (display-mode: standalone) {
   html, body { overscroll-behavior-y: none; }
-  .topbar, .tabs, .btn, .chip, .seg-btn, .act, .fader, .stat-row, .fold-head, .more-toggle, .day-pill, .list-more { -webkit-user-select: none; user-select: none; }
+  .topbar, .tabs, .btn, .chip, .seg-btn, .act, .fader, .stat-row, .fold-head, .more-toggle, .day-pill, .list-more, .plan-check, .plan-main, .cal-day { -webkit-user-select: none; user-select: none; }
 }
 /* 아이폰 앱 안의 웹뷰는 standalone으로 잡히지 않는다 */
 .native, .native body { overscroll-behavior-y: none; }
-.native :is(.topbar, .tabs, .btn, .chip, .seg-btn, .act, .fader, .stat-row, .fold-head, .more-toggle, .day-pill, .list-more) { -webkit-user-select: none; user-select: none; }
+.native :is(.topbar, .tabs, .btn, .chip, .seg-btn, .act, .fader, .stat-row, .fold-head, .more-toggle, .day-pill, .list-more, .plan-check, .plan-main, .cal-day) { -webkit-user-select: none; user-select: none; }
 .native a { -webkit-touch-callout: none; }
 
 /* ---------- 레이아웃 ---------- */
@@ -200,7 +200,7 @@ a, button, label { touch-action: manipulation; } /* 두 번 탭 확대 지연 �
   left: max(var(--gutter), env(safe-area-inset-left));
   z-index: 20;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   max-width: 480px;
   margin-inline: auto;
   padding: 4px;
@@ -907,6 +907,73 @@ html:has(.bat-legend) { scroll-padding-top: calc(132px + var(--warn-h, 0px) + en
 .toast.show button { pointer-events: auto; }
 .toast button::after { content: ""; position: absolute; inset: -12px -8px; } /* 사라지기 전에 한 번에 누를 수 있게 */
 .toast button { position: relative; padding: 0; border: 0; background: none; color: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; white-space: nowrap; }
+
+
+/* ---------- 계획 (오늘 계획, 달력의 그날 계획) ---------- */
+@media (max-width: 340px) {
+  .tab { font-size: 12px; } /* 탭 6칸이 한 칸 45px까지 좁아진다 */
+}
+.plans { margin: 0 0 4px; padding: 0; list-style: none; }
+.plan { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; column-gap: 6px; min-height: 56px; border-top: 1px solid var(--grid); }
+.plan:first-child { border-top: 0; }
+.plan-check { display: grid; place-items: center; width: 44px; height: 44px; margin-left: -10px; padding: 0; border: 0; background: none; color: var(--on-accent); cursor: pointer; }
+.plan-check > span { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--muted); } /* 아직인 동그라미도 바탕과 3:1 넘게 보이게 */
+.plan-check svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+.plan-check[aria-pressed="true"] > span { background: var(--accent); box-shadow: none; }
+.plan-check[aria-pressed="true"] svg { opacity: 1; }
+.plan-check:disabled { cursor: default; opacity: 0.4; }
+.plan-main { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; min-width: 0; min-height: 56px; padding: 6px 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.plan-time { color: var(--ink-2); font-size: 13px; font-weight: 600; }
+.plan-title { display: -webkit-box; overflow: hidden; font-weight: 600; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.plan-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; color: var(--muted); font-size: 13px; }
+.plan-meta .dot { margin-right: 2px; }
+.plan.done .plan-title { color: var(--ink-2); }
+.plan.rest .plan-title, .plan.rest .plan-time { color: var(--ink-2); }
+.plan-pill { padding: 4px 10px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--border-strong); color: var(--ink-2); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.plan > .btn { padding: 0 12px; }
+.plan-main:active, .plan-check:not(:disabled):active { opacity: 0.6; }
+.plan-panel { margin: 0 -16px 8px; padding: 16px; border-radius: 20px; background: var(--surface-2); }
+.plan-panel input { background: var(--surface); }
+.plan-panel .chips, .plan-panel .btn-row { --surface-2: var(--surface); } /* 같은 색 바탕에서 버튼이 글자처럼 보이지 않게 */
+.plan-panel .days { background: var(--surface); }
+.plan-links .chip { max-width: 100%; }
+.chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.chip-side { flex: none; }
+.plan-panel:focus { outline: none; }
+.plan-panel:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.plan-actions:empty { display: none; }
+.plan-clear { justify-self: start; margin-top: -6px; }
+.plan-clear[hidden] { display: none; }
+.plan-time-in { flex: 0 0 132px; }
+.plan-add .more-line { margin-top: 0; }
+.hint.flush { margin: 0; }
+.days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); margin-inline: -8px; padding: 4px; border-radius: 22px; background: var(--page); }
+.days .seg-btn { padding: 0; }
+@media (max-width: 374px) {
+  .days { grid-template-columns: repeat(4, minmax(0, 1fr)); } /* 좁은 화면에서도 요일 한 칸이 44px보다 좁아지지 않게 */
+}
+@media (max-width: 359px) {
+  .plan-time-in { flex-basis: auto; }
+}
+
+/* ---------- 달력 ---------- */
+.cal { margin: 0 calc(var(--gutter) * -1) 12px; padding: 0 4px; }
+.cal-head { display: flex; align-items: center; gap: 4px; min-height: 52px; margin: 4px 0 8px; padding: 0 calc(var(--gutter) - 4px); }
+.cal-title { margin-right: auto; font-size: 28px; line-height: 1.2; letter-spacing: -0.03em; }
+.cal-title small { display: block; color: var(--muted); font-size: 13px; font-weight: 500; letter-spacing: 0; }
+.cal-head .icon-btn { margin: 0; color: var(--ink); }
+.cal-head .btn[hidden] { display: none; }
+.cal-week, .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.cal-week { margin-bottom: 4px; color: var(--muted); font-size: 12px; font-weight: 600; text-align: center; }
+.cal-day { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; min-height: 52px; padding: 4px 0 6px; border: 0; border-radius: 14px; background: none; color: var(--ink); font: inherit; cursor: pointer; }
+.cal-day[aria-pressed="true"] { background: var(--surface-2); box-shadow: inset 0 0 0 2px var(--ink); }
+.cal-num { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cal-day[aria-current="date"] .cal-num { box-shadow: inset 0 0 0 2px var(--accent-line); color: var(--accent-line); }
+.cal-dots { display: flex; align-items: center; justify-content: center; gap: 3px; height: 6px; }
+.cal-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
+.cal-dot.hollow { background: none; box-shadow: inset 0 0 0 1.5px var(--c); }
+.cal-more { color: var(--muted); font-size: 11px; font-style: normal; font-weight: 700; line-height: 6px; }
+.cal-day:active { opacity: 0.6; }
 
 @media (prefers-reduced-motion: reduce) {
   .toast, .chart .col { transition: none; }

@@ -6,14 +6,16 @@ import { todayKey } from './dates.js';
 import { initPWA } from './pwa.js';
 import { initTooltips, savedToast, setRefresher } from './ui.js';
 import { isNativeApp, sendToApp } from './util.js';
+import { planOn } from './plan-card.js';
 import * as today from './views/today.js';
+import * as calendar from './views/calendar.js';
 import * as timer from './views/timer.js';
 import * as stats from './views/stats.js';
 import * as recovery from './views/recovery.js';
 import * as settings from './views/settings.js';
 import * as help from './views/help.js';
 
-const views = { today, timer, stats, recovery, settings, help };
+const views = { today, calendar, timer, stats, recovery, settings, help };
 const ALIASES = { burnout: 'recovery' }; // 설치된 앱의 옛 바로가기
 const root = document.getElementById('view');
 document.documentElement.classList.toggle('native', isNativeApp());
@@ -32,6 +34,7 @@ function focusSelector(el) {
   const parts = Object.entries(FOCUS_KEYS)
     .filter(([key]) => el.dataset[key] != null)
     .map(([key, attr]) => `[data-${attr}="${CSS.escape(el.dataset[key])}"]`);
+  if (!parts.length && el.id) return `#${CSS.escape(el.id)}`; // 키보드로 연 계획 칸(#plan-panel)처럼 data-*가 없는 곳
   return parts.length ? parts.join('') : null;
 }
 
@@ -193,6 +196,7 @@ function handleShared(e) {
 for (const type of ['click', 'keydown', 'input', 'change', 'submit']) {
   root.addEventListener(type, (e) => {
     if (type === 'click' && handleShared(e)) return;
+    if (planOn[type]?.(e)) return; // 오늘·달력의 계획 카드 안에서 일어난 일은 카드가 처리한다
     views[shown].on?.[type]?.(e);
   });
 }
