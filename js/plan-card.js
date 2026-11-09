@@ -212,7 +212,7 @@ let pointerAt = 0;
 globalThis.addEventListener?.('pointerdown', () => {
   pointerAt = Date.now();
 }, true);
-const byKeyboard = () => Date.now() - pointerAt > 1000 && !matchMedia('(pointer: coarse)').matches;
+export const byKeyboard = () => Date.now() - pointerAt > 1000 && !matchMedia('(pointer: coarse)').matches;
 
 /** 칸을 닫는 동작 뒤 키보드로 쓰던 사람의 포커스를 그 줄로 돌린다. 줄이 없어졌으면 카드 제목으로. 손가락이면 옮기지 않는다(아이폰 포커스 테두리) */
 function returnFocus(where, id, keyboard) {

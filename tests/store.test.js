@@ -481,3 +481,16 @@ test('지운 계획을 가리키는 기록은 다른 계획과 다시 이을 수
   store.linkEntry('r1', second);
   assert.equal(disk().entries.find((e) => e.id === 'r1').planId, second);
 });
+
+test('남긴 활동 기록은 분, 한 일, 끝나고 나니를 고칠 수 있고 틀린 값은 버린다', async () => {
+  const { store, disk } = await boot(seeded());
+  store.addEntry({ id: 'k1', date: '2026-10-02', areaId: 'a', minutes: 30, title: '러닝' });
+  store.updateEntry('k1', { minutes: 45, title: '  저녁 러닝  ', feel: 'fill' });
+  let entry = disk().entries.find((e) => e.id === 'k1');
+  assert.deepEqual([entry.minutes, entry.title, entry.feel], [45, '저녁 러닝', 'fill']);
+  store.updateEntry('k1', { minutes: 0, feel: 'tired' });
+  store.updateEntry('k1', { minutes: 2000 });
+  store.updateEntry('없음', { minutes: 10 });
+  entry = disk().entries.find((e) => e.id === 'k1');
+  assert.deepEqual([entry.minutes, entry.feel], [45, 'fill']);
+});

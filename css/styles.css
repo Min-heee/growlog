@@ -111,7 +111,7 @@
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html { scroll-padding: calc(72px + env(safe-area-inset-top)) 0 calc(104px + env(safe-area-inset-bottom)); -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+html { scroll-padding: calc(72px + env(safe-area-inset-top)) 0 calc(104px + env(safe-area-inset-bottom)); overscroll-behavior-x: none; -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; } /* 트랙패드로 카드를 옆으로 밀 때 브라우저 뒤로 가기가 함께 일어나지 않게 */
 body {
   margin: 0;
   background: var(--page);
@@ -130,11 +130,11 @@ a, button, label { touch-action: manipulation; } /* 두 번 탭 확대 지연 �
 /* 홈 화면 앱으로 실행할 때: 당겨서 새로고침과 글자 선택을 막아 앱처럼 동작하게 한다 */
 @media (display-mode: standalone) {
   html, body { overscroll-behavior-y: none; }
-  .topbar, .tabs, .btn, .chip, .seg-btn, .act, .fader, .stat-row, .fold-head, .more-toggle, .day-pill, .list-more, .plan-check, .plan-main, .cal-day { -webkit-user-select: none; user-select: none; }
+  .topbar, .tabs, .btn, .chip, .seg-btn, .act, .fader, .stat-row, .fold-head, .more-toggle, .day-pill, .list-more, .plan-check, .plan-main, .cal-day, .deck-tab, .entry-edit { -webkit-user-select: none; user-select: none; }
 }
 /* 아이폰 앱 안의 웹뷰는 standalone으로 잡히지 않는다 */
 .native, .native body { overscroll-behavior-y: none; }
-.native :is(.topbar, .tabs, .btn, .chip, .seg-btn, .act, .fader, .stat-row, .fold-head, .more-toggle, .day-pill, .list-more, .plan-check, .plan-main, .cal-day) { -webkit-user-select: none; user-select: none; }
+.native :is(.topbar, .tabs, .btn, .chip, .seg-btn, .act, .fader, .stat-row, .fold-head, .more-toggle, .day-pill, .list-more, .plan-check, .plan-main, .cal-day, .deck-tab, .entry-edit) { -webkit-user-select: none; user-select: none; }
 .native a { -webkit-touch-callout: none; }
 
 /* ---------- 레이아웃 ---------- */
@@ -974,6 +974,29 @@ html:has(.bat-legend) { scroll-padding-top: calc(132px + var(--warn-h, 0px) + en
 .cal-dot.hollow { background: none; box-shadow: inset 0 0 0 1.5px var(--c); }
 .cal-more { color: var(--muted); font-size: 11px; font-style: normal; font-weight: 700; line-height: 6px; }
 .cal-day:active { opacity: 0.6; }
+
+/* ---------- 오늘 탭: 옆으로 넘기는 카드 ---------- */
+.deck-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; margin: 0 0 10px; padding: 4px; border-radius: 20px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--border); }
+.deck-tab { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; min-height: 48px; padding: 4px 2px; border: 0; border-radius: 16px; background: none; color: var(--ink-2); font: inherit; cursor: pointer; }
+.deck-tab[aria-selected="true"] { background: var(--surface-2); color: var(--ink); }
+.deck-tab[aria-selected="true"]::after { content: ""; position: absolute; right: 32%; bottom: 3px; left: 32%; height: 2px; border-radius: 1px; background: var(--accent-line); } /* 아래 탭 막대와 다르게 '지금 쪽' 표시 */
+.deck-tab-name { max-width: 100%; overflow: hidden; font-size: 14px; font-weight: 600; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
+.deck-tab-mark { min-height: 14px; color: var(--muted); font-size: 12px; font-weight: 600; line-height: 14px; font-variant-numeric: tabular-nums; }
+.deck-tab-mark.done { color: var(--accent-line); }
+.deck-tab:active { opacity: 0.6; }
+.deck { margin: -4px; padding: 4px; overflow-x: hidden; overflow-x: clip; touch-action: pan-y pinch-zoom; } /* 세로 스크롤은 브라우저가, 옆으로 미는 손가락은 카드가 받는다. 밀거나 들어오는 카드가 페이지를 옆으로 넓히지 않게 자르고, 포커스 테두리 자리는 남긴다 */
+.deck.zoomed { touch-action: manipulation; }
+.deck-card:focus { outline: none; }
+.deck-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius); }
+.deck .daily { padding: 16px; }
+.deck .daily .more-line { justify-content: flex-start; }
+.deck-next { margin-bottom: 8px; }
+.deck-hint { margin: -2px 0 10px; color: var(--muted); font-size: 13px; text-align: center; }
+.sleep-total { margin: -6px 0 12px; }
+.entry-edit { display: flex; flex: 1; flex-direction: column; align-items: flex-start; min-width: 0; min-height: 44px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.entry-edit .entry-title { max-width: 100%; }
+.entry-edit:active { opacity: 0.6; }
+.entries .plan-panel { margin: 0 -16px 8px; }
 
 @media (prefers-reduced-motion: reduce) {
   .toast, .chart .col { transition: none; }

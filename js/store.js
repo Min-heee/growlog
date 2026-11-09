@@ -347,6 +347,15 @@ export const setEntryFeel = (id, feel) =>
     const entry = s.entries.find((e) => e.id === id);
     if (entry && FEELS.includes(feel)) entry.feel = feel;
   });
+/** 남긴 활동 기록을 고친다. 분은 1~1440, 한 일은 120자까지, 끝나고 나니는 고른 값이 있을 때만 */
+export const updateEntry = (id, { minutes, title, feel }) =>
+  commit((s) => {
+    const entry = s.entries.find((e) => e.id === id);
+    if (!entry) return;
+    if (Number.isInteger(minutes) && minutes >= 1 && minutes <= 1440) entry.minutes = minutes;
+    if (typeof title === 'string') entry.title = title.trim().slice(0, 120);
+    if (FEELS.includes(feel)) entry.feel = feel;
+  });
 /** 그 영역에서 마지막으로 고른 끝나고 나니. 처음이면 영역의 처음 값, 그것도 없으면 계산에 넣지 않는 그대로예요 */
 export function lastFeel(areaId, s = state) {
   let last = null;

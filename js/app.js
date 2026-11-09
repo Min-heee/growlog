@@ -235,7 +235,7 @@ document.addEventListener('visibilitychange', () => {
   }
   retrySave();
   if (hiddenAt && Date.now() - hiddenAt >= REENTER_AFTER && !editing() && views[shown].enter) {
-    views[shown].enter();
+    views[shown].enter({ long: true });
     render();
     scrollTo(0, 0);
   } else if (todayKey() !== renderedDay) render();

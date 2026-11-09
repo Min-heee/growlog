@@ -77,14 +77,17 @@ export function fader({ field, label, low, high }, value, action) {
 
 const X_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
-function entryItem(entry, area, planIds) {
+/** 활동 기록 한 줄. edit이면 줄을 눌러 고칠 수 있다(오늘 탭). open은 고치는 칸이 열려 있는지 */
+export function entryItem(entry, area, planIds, { edit = false, open = false } = {}) {
   const where = area ? `${area.emoji} ${area.label}` : '삭제된 영역';
+  const text = `<span class="entry-title">${esc(entry.title || area?.label || '기록')}</span>
+      <span class="entry-meta">${esc(where)}${area?.kind === 'varies' && entry.feel ? ` · ${FEEL_LABELS[entry.feel]}` : ''}${entry.source === 'timer' ? ' · 타이머' : ''}${entry.planId && planIds?.has(entry.planId) ? ' · 계획' : ''}</span>`;
+  const main = edit
+    ? `<button type="button" class="entry-main entry-edit" data-action="entry-edit" data-id="${esc(entry.id)}" aria-expanded="${open}"${open ? ' aria-controls="entry-panel"' : ''}>${text}<span class="sr-only">, 고치기</span></button>`
+    : `<div class="entry-main">${text}</div>`;
   return `<li class="entry">
     <span class="dot" style="background:${areaColor(area)}"></span>
-    <div class="entry-main">
-      <span class="entry-title">${esc(entry.title || area?.label || '기록')}</span>
-      <span class="entry-meta">${esc(where)}${area?.kind === 'varies' && entry.feel ? ` · ${FEEL_LABELS[entry.feel]}` : ''}${entry.source === 'timer' ? ' · 타이머' : ''}${entry.planId && planIds?.has(entry.planId) ? ' · 계획' : ''}</span>
-    </div>
+    ${main}
     <span class="entry-min">${fmtHM(entry.minutes)}</span>
     <button type="button" class="icon-btn" data-action="delete-entry" data-id="${esc(entry.id)}" aria-label="기록 삭제">${X_ICON}</button>
   </li>`;
