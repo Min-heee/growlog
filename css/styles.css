@@ -975,6 +975,34 @@ html:has(.bat-legend) { scroll-padding-top: calc(132px + var(--warn-h, 0px) + en
 .cal-more { color: var(--muted); font-size: 11px; font-style: normal; font-weight: 700; line-height: 6px; }
 .cal-day:active { opacity: 0.6; }
 
+/* 달력: 기분 눈금, 지친 날 표시, 고른 날의 일기 */
+.cal-mood { display: flex; gap: 2px; height: 9px; }
+.cal-mood i { width: 3px; height: 9px; border-radius: 1px; background: color-mix(in srgb, var(--ink) 16%, transparent); }
+.cal-mood i.on { background: var(--ink); }
+.cal-mood.hard i.on { background: var(--accent-line); } /* 오늘 탭 위 '힘든 날' 눈금과 같은 색 */
+.cal-mood.hard { box-shadow: 0 3px 0 -1px var(--accent-line); } /* 색만으로 가르지 않게 밑줄도 긋는다. 기분 없이 힘든 날에도 보인다 */
+.cal-day .cal-flag { position: absolute; top: 5px; left: calc(50% + 13px); } /* 숫자 동그라미 오른쪽 위 */
+.cal-flag { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-line); }
+.cal-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; margin: 8px var(--gutter) 0; color: var(--muted); font-size: 12px; }
+.cal-legend > span { display: inline-flex; align-items: center; gap: 5px; }
+.journal { padding: 18px 16px 16px; }
+.journal-when { margin: 0; color: var(--muted); font-size: 13px; font-weight: 500; }
+.journal h2 { margin: 2px 0 14px; }
+.journal-quote { margin: 0 0 16px; padding-left: 14px; border-left: 3px solid var(--accent-line); font-size: 22px; font-weight: 700; line-height: 1.32; letter-spacing: -0.03em; overflow-wrap: anywhere; }
+.levels { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 4px; padding: 12px 0; border-top: 1px solid var(--grid); border-bottom: 1px solid var(--grid); }
+.level-name { display: block; color: var(--ink-2); font-size: 12px; font-weight: 500; }
+.level-val { display: block; margin-top: 2px; font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 374px) {
+  .level-val { font-size: 19px; } /* '10.5시간'이 한 줄에 들어가게 */
+}
+.journal-extra { margin: 10px 0 0; color: var(--ink-2); font-size: 13px; line-height: 1.6; }
+.level-val small { margin-left: 1px; color: var(--ink-2); font-size: 12px; font-weight: 600; letter-spacing: 0; }
+.level-bar { display: flex; gap: 2px; margin-top: 6px; }
+.level-bar i { flex: 1; height: 4px; border-radius: 1px; background: color-mix(in srgb, var(--ink) 14%, transparent); }
+.level-bar i.on { background: var(--accent-line); }
+.journal-sub { margin: 14px 0 0; color: var(--ink-2); font-size: 13px; font-weight: 600; }
+.journal .btn.block { margin-top: 14px; }
+
 /* ---------- 오늘 탭: 옆으로 넘기는 카드 ---------- */
 .deck-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; margin: 0 0 10px; padding: 4px; border-radius: 20px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--border); }
 .deck-tab { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; min-height: 48px; padding: 4px 2px; border: 0; border-radius: 16px; background: none; color: var(--ink-2); font: inherit; cursor: pointer; }

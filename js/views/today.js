@@ -102,6 +102,14 @@ function decideSlide(state, day) {
 }
 
 let makerWanted = false; // 다른 화면에서 영역을 만들러 왔다
+// 달력에서 그날 기록을 고치러 왔다: { day, keyboard }. 며칠 전인지는 오늘 탭을 그리는 순간에 센다(그사이 자정을 넘겨도 고른 날이 열린다)
+let dayWanted = null;
+let focusDay = false; // 키보드로 왔다면 도착한 뒤 그날 컨디션 제목으로 포커스를 옮긴다
+
+/** 달력에서 그날 기록을 고치러 온다. 컨디션 카드에서 그날을 골라 둔다 */
+export function openDay(day, { keyboard = false } = {}) {
+  dayWanted = { day, keyboard };
+}
 
 /** 다른 화면에서 오늘로 넘어오며 영역 만들기 칸을 열어둔다 */
 export function openAreaMaker() {
@@ -111,6 +119,10 @@ export function openAreaMaker() {
 }
 
 export function arrive() {
+  if (focusDay) {
+    focusDay = false;
+    document.getElementById('checkin-head')?.focus({ preventScroll: true });
+  }
   if (!makerWanted) return;
   makerWanted = false;
   const input = document.querySelector('[data-maker="label"]');
@@ -390,6 +402,15 @@ export function render(state) {
     if (!makerWanted) slide = null; // 영역 만들기로 왔다면 활동 기록 카드를 그대로 연다
   }
   shownDay = today;
+  if (dayWanted) {
+    const back = CATCH_UP.findIndex(([n]) => addDays(today, -n) === dayWanted.day);
+    if (back >= 0) {
+      daysBack = back;
+      slide = 0; // 그날 컨디션 카드부터
+      focusDay = dayWanted.keyboard;
+    } else setTimeout(() => toast('이날은 이제 고칠 수 없어요. 3일 전까지 고칠 수 있어요'));
+    dayWanted = null;
+  }
   const day = pickedDay();
   decideSlide(state, day);
   const areas = activeAreas(state);

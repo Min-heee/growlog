@@ -183,8 +183,8 @@ function logPanel(plan, day, state) {
   </li>`;
 }
 
-/** 그날의 계획 카드. where는 'today' 또는 'calendar', today는 그릴 때의 오늘 */
-export function planCard(state, day, { where, today }) {
+/** 그날의 계획 카드. where는 'today' 또는 'calendar', today는 그릴 때의 오늘, title은 제목을 바꿀 때(달력에서 위에 날짜가 이미 있을 때) */
+export function planCard(state, day, { where, today, title = null }) {
   const items = plansOn(state.plans, day);
   const hint = hintFor(items, day, today);
   // 체크를 풀었거나 다른 곳에서 기록을 남겨 기록하기 칸을 그릴 수 없게 되면 닫는다. 남겨 두면 나중에 저절로 다시 열린다
@@ -199,7 +199,7 @@ export function planCard(state, day, { where, today }) {
     })
     .join('');
   return `<section class="card plan-card" data-plan-where="${where}" data-plan-day="${day}" data-plan-today="${today}" aria-labelledby="plan-head-${where}">
-    <div class="card-head"><h2 id="plan-head-${where}" tabindex="-1">${day === today ? '오늘 계획' : fmtDay(day)}</h2>${hint ? `<span class="hint">${hint}</span>` : ''}</div>
+    <div class="card-head"><h2 id="plan-head-${where}" tabindex="-1">${title ?? (day === today ? '오늘 계획' : fmtDay(day))}</h2>${hint ? `<span class="hint">${hint}</span>` : ''}</div>
     ${items.length ? `<ul class="plans">${rows}</ul>` : `<p class="sub">${emptyText(day, today)}</p>`}
     ${addForm(where, state)}
   </section>`;
