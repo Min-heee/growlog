@@ -93,7 +93,7 @@ function showLabel(state) {
 function detailsByKey() {
   const seen = new Map();
   return [...root.querySelectorAll('details')].map((el) => {
-    const text = el.querySelector('summary')?.textContent;
+    const text = el.dataset.key ?? el.querySelector('summary')?.textContent; // 숫자처럼 바뀌는 글자가 있으면 data-key로 같은 칸을 찾는다
     seen.set(text, (seen.get(text) ?? 0) + 1);
     return [`${text}:${seen.get(text)}`, el]; // 표로 보기처럼 이름이 같은 것은 순서로 나눈다
   });

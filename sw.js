@@ -24,6 +24,7 @@ const FILES = [
   './js/plans.js',
   './js/pwa.js',
   './js/sample.js',
+  './js/selfcare.js',
   './js/store.js',
   './js/strain.js',
   './js/ui.js',

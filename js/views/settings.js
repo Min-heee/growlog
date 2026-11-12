@@ -101,7 +101,7 @@ function profileCard({ role, age, hide, monthlyOff }) {
     list.map(([v, label]) => `<button type="button" class="seg-btn" data-action="profile" data-field="${field}" data-value="${v}" aria-pressed="${value === v}">${label}</button>`).join('');
   return `<section class="card">
     <h2>나에게 맞추기</h2>
-    <p class="sub">부하와 회복을 계산할 때 어떤 기본값에서 시작할지 정해요. 기록이 쌓이면 내 값으로 옮겨가요.${READY && age !== 'u18' ? ' 주로 하는 일로 일을 고르면 회복 탭에서 한 달 체크도 할 수 있어요.' : ''}</p>
+    <p class="sub">부하와 회복을 계산할 때 어떤 기본값에서 시작할지 정해요. 기록이 쌓이면 내 값으로 옮겨가요.${READY && age !== 'u18' ? ' 주로 하는 일로 일을 고르면 내 상태 탭의 자세히에서 한 달 체크도 할 수 있어요.' : ''}</p>
     <div class="stack">
       <div><div class="scale-head"><span class="scale-label">주로 하는 일</span></div><div class="seg" role="group" aria-label="주로 하는 일">${choice('role', ROLES, role)}</div></div>
       <div><div class="scale-head"><span class="scale-label">나이</span></div><div class="seg" role="group" aria-label="나이">${choice('age', AGES, age)}</div></div>

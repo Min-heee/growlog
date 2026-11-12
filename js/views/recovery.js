@@ -1,19 +1,22 @@
-// 회복 화면: 내 평소와 비교한 부하, 지친 날 기록, 이번 주 돌아보기, 계산 근거
-import { addMark, addRebase, BAT_ITEMS, closeMarks, deleteMarks, getState, MARK_TAGS, reopenMarks, restoreMarks, setMonthly, setSupportSeen, setWeekly } from '../store.js';
+// 내 상태 화면: 요즘 흐름을 알아차리고(selfcare.js), 무엇이 나를 채우고 지치게 하는지 보고, 이번 주에 해 볼 것을 고른다.
+// 그 아래 '자세히'에 예전 회복 화면(쌓인 부하, 지친 날 기록, 주간 돌아보기, 한 달 체크, 날짜별 기록, 계산 근거)을 접어 둔다.
+// 번아웃인지 맞히지 않는다. 내가 남긴 기록을 요약할 뿐이다.
+import { addMark, addPlan, addRebase, BAT_ITEMS, closeMarks, deleteMarks, getState, MARK_TAGS, reopenMarks, replacePlans, restoreMarks, setMonthly, setSupportSeen, setWeekly, skipPlan } from '../store.js';
 import { addDays, fmtDay, fmtMonthDay, rangeKeys, sleepHours, todayKey, weekStartKey } from '../dates.js';
+import { flowOf, flowWord, patterns, suggestions } from '../selfcare.js';
+import { clockLabel } from '../plans.js';
 import { BANDS, bandWord, insight, MILESTONES, SEVERITY } from '../insight.js';
 import { K } from '../strain.js';
 import { answered, change, editUntil, isComplete, LINES, PARTS, status } from '../bat.js';
 import { ANCHORS, INTRO, ITEMS, READY } from '../bat-items.js';
 import { zoneChart } from '../charts.js';
-import { esc, fmt1, fmtHM, fmtHours, josa } from '../util.js';
-import { ask, ratingScale, refresh, savedToast, tickBar, toast } from '../ui.js';
+import { esc, fmt1, fmtHM, fmtHours, josa, uid } from '../util.js';
+import { ask, CHEV, ratingScale, refresh, savedToast, tickBar, toast } from '../ui.js';
 
-const HEADER = '<header class="page-head"><h1>부하와 회복</h1></header>';
-const CLAIM = '기록하신 내용을 바탕으로, 최근의 부하·수면·회복이 내 평소와 얼마나 다른지 요약해요. 번아웃이나 건강 상태를 판단하지 않아요.';
+const CLAIM = '내가 남긴 기록을 요약해 보여줘요. 나를 채우고 지치게 한 것은 지난 기록에서 그랬다는 뜻이고, 원인이라는 뜻은 아니에요. 번아웃이나 건강 상태를 판단하지 않아요.';
 const HIDDEN_CLAIM = '기록은 그대로 쌓이고 추정만 숨겼어요. 번아웃이나 건강 상태를 판단하지 않아요.';
 // 한 달 체크를 하는 분에게는 설문 결과도 진단이 아니라고 함께 말한다
-const BAT_CLAIM = '기록하신 내용을 바탕으로, 최근의 부하·수면·회복이 내 평소와 얼마나 다른지 요약해요. 한 달 체크는 설문 답을 유럽 연구의 두 선과 견주어 보여줘요. 둘 다 번아웃이나 건강 상태를 진단하지 않아요.';
+const BAT_CLAIM = '내가 남긴 기록을 요약해 보여줘요. 나를 채우고 지치게 한 것은 지난 기록에서 그랬다는 뜻이고, 원인이라는 뜻은 아니에요. 한 달 체크는 설문 답을 유럽 연구의 두 선과 견주어 보여줘요. 둘 다 번아웃이나 건강 상태를 진단하지 않아요.';
 const BAT_HIDDEN_CLAIM = '기록은 그대로 쌓이고 추정만 숨겼어요. 한 달 체크를 포함해 번아웃이나 건강 상태를 진단하지 않아요.';
 const OLDEST_MARK = 90; // 지난 일도 떠올려 남길 수 있게 3개월까지 받는다
 const FUZZ = [
@@ -58,9 +61,10 @@ function noUsualNote(i) {
   return '회복 중이던 날이 많아서 아직 비교할 평소가 없어요. 며칠 더 기록하면 평소를 잡기 시작해요.';
 }
 
-function hero(i) {
+/** 쌓인 부하의 큰 말. 자세히 안에서는 페이지 제목(h1)이 둘이 되지 않게 tag로 낮춘다 */
+function hero(i, tag = 'h1') {
   const card = (title, note, more = '') => `<header class="hero">
-    <h1 class="hero-word mid${title.length > LONG_WORD ? ' long' : ''}">${title}</h1>
+    <${tag} class="hero-word mid${title.length > LONG_WORD ? ' long' : ''}">${title}</${tag}>
     <p class="hero-note">${note}</p>
     ${more}
   </header>`;
@@ -270,7 +274,6 @@ function marksCard(i, today, hide) {
   return `<section class="card marks-card">
     <div class="card-head"><h2>지친 날</h2>${form.open ? '' : '<button type="button" class="btn small outline" data-action="mark-open">지친 날로 표시</button>'}</div>
     <p class="sub">남겨두면 그때까지 무엇이 얼마나 쌓였는지 볼 수 있어요. 번아웃처럼 느껴진 날도 여기에 표시해 주세요. 지난 날도 괜찮아요.</p>
-    ${markForm(today)}
     ${i.overlay && !hide ? `<p class="lead">${esc(overlayLine(i.overlay))}</p>` : ''}
     ${i.episodes.map((e) => episodeRow(e, i.theta, hide)).join('')}
   </section>`;
@@ -289,7 +292,7 @@ function diaryCard(state, today) {
     });
   if (!rows.length) return '';
   return `<section class="card">
-    <details class="table-view"><summary>날짜별 기록 보기 (최근 30일)</summary><div class="table-wrap"><table><thead><tr><th>날짜</th><th>에너지</th><th>스트레스</th><th>기분</th><th>수면</th><th>메모</th></tr></thead><tbody>${rows.join('')}</tbody></table></div></details>
+    <div class="table-wrap"><table><thead><tr><th>날짜</th><th>에너지</th><th>스트레스</th><th>기분</th><th>수면</th><th>메모</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>
   </section>`;
 }
 
@@ -472,39 +475,163 @@ const METHOD = `<section class="card">
   </details>
 </section>`;
 
-export function render(state) {
-  const today = todayKey();
-  const i = insight(state, today);
-  chart = i.entries >= K.TREND_MIN && !i.noUsual && !state.profile.hide ? i : null;
-  if (state.profile.hide) {
-    return `${HEADER}
-      ${supportCard(i)}
-      <section class="card"><h2>추정을 숨겨뒀어요</h2><p class="sub flush">기록은 그대로 쌓여요. 다시 보려면 설정에서 바꿀 수 있어요.</p></section>
-      ${marksCard(i, today, true)}
-      ${weeklyCard(state, i, today)}
-      ${monthlyCard(state, today)}
-      ${diaryCard(state, today)}
-      <p class="disclaimer">${batFor(state.profile) ? BAT_HIDDEN_CLAIM : HIDDEN_CLAIM}</p>`;
+// ---- 내 상태 ----
+const TIPS_KEY = 'growlog:tips'; // '괜찮아요'로 숨긴 제안 { key: 이날까지 }. 이 기기에서만 지켜도 된다
+const TIP_HIDE_DAYS = 6;
+let tipsShown = []; // 지금 화면의 제안. 누르면 여기서 찾는다
+let tipsDay = ''; // 제안을 고른 날. 화면을 켜 둔 채 자정을 넘기면 다시 골라야 한다
+function readDismissed() {
+  try {
+    const data = JSON.parse(localStorage.getItem(TIPS_KEY) || '{}');
+    return data && typeof data === 'object' ? data : {};
+  } catch {
+    return {};
   }
-  return `${supportCard(i)}
-    ${hero(i)}
-    ${trendCard(i)}
-    ${readouts(i)}
-    ${marksCard(i, today, false)}
-    ${flagCard(i)}
-    ${newNormalCard(i)}
-    ${helpedCard(i)}
-    ${notesCard(i)}
-    ${weeklyCard(state, i, today)}
-    ${monthlyCard(state, today)}
-    ${diaryCard(state, today)}
-    ${usualCard(i)}
-    ${personalCard(i, state.profile)}
-    ${METHOD}
-    <p class="disclaimer">${batFor(state.profile) ? BAT_CLAIM : CLAIM}</p>`;
+}
+function dismissTip(key, today) {
+  const data = Object.fromEntries(Object.entries(readDismissed()).filter(([, until]) => until >= today)); // 지난 것은 지운다
+  data[key] = addDays(today, TIP_HIDE_DAYS);
+  try {
+    localStorage.setItem(TIPS_KEY, JSON.stringify(data));
+  } catch {}
 }
 
-export const label = (state) => (state.profile.hide ? '회복' : '쌓인 부하 (추정)');
+const COLS = { energy: 5, stress: 5, mood: 5, sleep: 9 };
+const FLOW_ROWS = [
+  ['energy', '에너지'],
+  ['stress', '스트레스'],
+  ['mood', '기분'],
+  ['sleep', '잠'],
+];
+
+function stateHero(word) {
+  return `<header class="hero">
+    <h1 class="hero-word mid${word.word.length > LONG_WORD ? ' long' : ''}">${esc(word.word)}</h1>
+    <p class="hero-note">${esc(word.note)}</p>
+  </header>`;
+}
+
+/** 4주 막대. 최근 7일은 밝게, 힘든 날은 라임(추정을 숨겼으면 색 없이) */
+function flowCard(flow, hide) {
+  const rows = FLOW_ROWS.map(([key, name]) => {
+    const cols = flow.rows[key]
+      .map((v, i) => {
+        if (v == null) return '<i class="none"></i>';
+        const cls = !hide && flow.hard[i] ? 'lo' : i >= 21 ? 'wk' : '';
+        return `<i${cls ? ` class="${cls}"` : ''} style="height:${Math.max(12, Math.min(100, (v / COLS[key]) * 100))}%"></i>`;
+      })
+      .join('');
+    const fixed = (v) => (v == null ? null : v.toFixed(1)); // 4와 2.5가 섞여 보이지 않게 소수 한 자리로
+    const now = fixed(flow.recent[key]);
+    const before = fixed(flow.prev[key]);
+    const said = `${name} 최근 7일 평균 ${now ?? '기록 없음'}${before != null ? `, 그 전 7일 ${before}` : ''}`;
+    return `<div class="flow-row" role="img" aria-label="${said}">
+      <span class="flow-name" aria-hidden="true">${name}</span>
+      <span class="flow-cols" aria-hidden="true">${cols}</span>
+      <span class="flow-val" aria-hidden="true">${now ?? '–'}${before != null ? `<small>그 전 7일 ${before}</small>` : ''}</span>
+    </div>`;
+  }).join('');
+  const anyHard = !hide && flow.hard.some(Boolean);
+  return `<section class="card flow" aria-label="최근 4주 컨디션">
+    ${rows}
+    <div class="flow-foot" aria-hidden="true"><span>4주 전</span><span>최근 7일</span></div>
+    <div class="more-line">${anyHard ? '<span class="hint">라임은 힘들었던 날이에요</span>' : '<span class="hint">밝은 막대가 최근 7일이에요</span>'}${form.open ? '' : '<button type="button" class="btn small outline" data-action="mark-open">지친 날로 표시</button>'}</div>
+  </section>`;
+}
+
+/** 지친 날로 표시하는 칸. 오늘 화면에서 넘어와도 바로 보이게 흐름 바로 아래에 둔다 */
+function markCard(today) {
+  if (!form.open) return '';
+  return `<section class="card">
+    <h2>지친 날로 표시해요</h2>
+    <p class="sub">번아웃처럼 느껴진 날도 괜찮아요. 남겨두면 그때까지 무엇이 얼마나 쌓였는지 볼 수 있어요.</p>
+    ${markForm(today)}
+  </section>`;
+}
+
+// 10번이 넘으면 10칸 비율로 줄인다. 칸이 너무 잘게 나뉘면 읽히지 않는다
+const ratioBar = ([on, n], drain) => {
+  const cells = Math.min(n, 10);
+  const lit = Math.round((on / n) * cells);
+  return `<span class="know-ratio${drain ? ' drain' : ''}" aria-hidden="true">${Array.from({ length: cells }, (_, i) => `<i${i < lit ? ' class="on"' : ''}></i>`).join('')}</span>`;
+};
+function knowItems(list, drain) {
+  return list
+    .map((x) => `<div class="know-item"><span class="know-what">${esc(x.what)}</span><span class="know-num">${esc(x.num)}</span><span class="know-why">${esc(x.why)}</span>${x.ratio ? ratioBar(x.ratio, drain) : ''}</div>`)
+    .join('');
+}
+
+/** 나를 채우는 것과 지치게 하는 것 */
+function knowCard(pats) {
+  if (!pats.fills.length && !pats.drains.length) {
+    return `<section class="card know"><p class="sub flush">기록이 쌓이면 무엇이 나를 채우고 무엇이 지치게 하는지 보여요. 운동·취미를 기록할 때 끝나고 어땠는지 고르고, 잠과 컨디션을 남겨 주세요.</p></section>`;
+  }
+  return `<section class="card know">
+    ${pats.fills.length ? `<h3>나를 채워요</h3>${knowItems(pats.fills, false)}` : ''}
+    ${pats.drains.length ? `<h3${pats.fills.length ? ' class="know-gap"' : ''}>나를 지치게 해요</h3>${knowItems(pats.drains, true)}` : ''}
+    <p class="hint flush know-foot">최근 석 달 기록에서 그랬다는 뜻이에요. 같은 일도 날마다 다를 수 있어요.</p>
+  </section>`;
+}
+
+/** 이번 주 해 볼 것. 누르면 바로 계획에 반영하고, 괜찮아요는 한 주 동안 숨긴다 */
+function tryCard(tips) {
+  if (!tips.length) return '<section class="card try"><p class="sub flush">지금은 따로 조절할 게 보이지 않아요.</p></section>';
+  return `<section class="card try">${tips
+    .map(
+      (t) => `<div class="try-item">
+        <p class="try-say">${esc(t.say)}</p>
+        <p class="try-why">${esc(t.why)}</p>
+        <div class="btn-row"><button type="button" class="btn small primary" data-action="tip-do" data-id="${esc(t.key)}">${esc(t.label)}</button><button type="button" class="btn small" data-action="tip-skip" data-id="${esc(t.key)}">${t.action.kind === 'rest' ? '그대로 할게요' : '괜찮아요'}</button></div>
+      </div>`,
+    )
+    .join('')}</section>`;
+}
+
+/** 자세히: 예전 회복 화면을 주제별로 접어 둔다. 펼친 칸은 다시 그려도 열려 있다(app.js) */
+function detailList(state, i, today) {
+  const hide = state.profile.hide;
+  const load = hide
+    ? '<section class="card"><h2>추정을 숨겨뒀어요</h2><p class="sub flush">기록은 그대로 쌓여요. 다시 보려면 설정에서 바꿀 수 있어요.</p></section>'
+    : `${hero(i, 'h3')}${trendCard(i)}${readouts(i)}${flagCard(i)}${newNormalCard(i)}${helpedCard(i)}${notesCard(i)}${usualCard(i)}`;
+  const items = [
+    ['쌓인 부하', hide ? '숨김' : '내 평소와 비교', load],
+    ['지친 날 기록', i.episodes.length ? `${i.episodes.length}번` : '', marksCard(i, today, hide)],
+    ['주간 돌아보기', '', weeklyCard(state, i, today)],
+    ['한 달 체크', '', monthlyCard(state, today)],
+    ['날짜별 기록', '최근 30일', diaryCard(state, today)],
+    ['계산 근거', '', `${hide ? '' : personalCard(i, state.profile)}${METHOD}`],
+  ].filter(([, , html]) => html.trim());
+  return items
+    .map(([name, hint, html]) => `<details class="more-detail" data-key="detail:${name}"><summary><span class="more-detail-name">${name}</span>${hint ? `<span class="more-detail-hint">${hint}</span>` : ''}${CHEV}</summary><div class="more-detail-body">${html}</div></details>`)
+    .join('');
+}
+
+export function render(state) {
+  const today = todayKey();
+  const hide = state.profile.hide;
+  const i = insight(state, today);
+  chart = i.entries >= K.TREND_MIN && !i.noUsual && !hide ? i : null;
+  const flow = flowOf(state, today);
+  const word = flowWord(flow, hide);
+  const pats = patterns(state, today);
+  const clock = new Date();
+  tipsShown = suggestions(state, today, { flow, word, pats, hide, dismissed: readDismissed(), now: clock.getHours() * 60 + clock.getMinutes() });
+  tipsDay = today;
+  const claim = batFor(state.profile) ? (hide ? BAT_HIDDEN_CLAIM : BAT_CLAIM) : hide ? HIDDEN_CLAIM : CLAIM;
+  return `${supportCard(i)}
+    ${stateHero(word)}
+    ${flowCard(flow, hide)}
+    ${markCard(today)}
+    <h2 class="sec-name">나를 채우는 것과 지치게 하는 것</h2>
+    ${knowCard(pats)}
+    <h2 class="sec-name">이번 주 해 볼 것</h2>
+    ${tryCard(tipsShown)}
+    <h2 class="sec-name">자세히</h2>
+    ${detailList(state, i, today)}
+    <p class="disclaimer">${claim}</p>`;
+}
+
+export const label = () => '내 상태';
 
 export function drawCharts(root) {
   const el = root.querySelector('[data-chart="trend"]');
@@ -522,7 +649,17 @@ export function drawCharts(root) {
   zoneChart(el, { points, marks, zoneTop: K.T_HIGH, label: '최근 60일 쌓인 부하와 내 평소 범위' });
 }
 
-export const mount = (root) => drawCharts(root);
+// 자세히의 차트는 접힌 칸 안이라 폭이 0이다. 칸을 펼칠 때 그린다(toggle은 버블되지 않아 캡처로 받는다)
+let toggleBound = false;
+export function mount(root) {
+  if (!toggleBound) {
+    toggleBound = true;
+    root.addEventListener('toggle', (e) => {
+      if (e.target.matches?.('details.more-detail') && e.target.open) drawCharts(root);
+    }, true);
+  }
+  drawCharts(root);
+}
 
 /** 오늘 화면에서 넘어왔다면 표시 칸이 바로 보이게 한다 */
 export function arrive(root) {
@@ -532,6 +669,23 @@ export function arrive(root) {
   const warning = document.getElementById('save-warning');
   if (warning && !warning.hidden) scrollBy(0, -warning.offsetHeight);
   el.focus({ preventScroll: true });
+}
+
+/** 해 볼 것을 바로 계획에 반영한다. 되돌리기가 있다 */
+function doTip(key) {
+  const tip = tipsShown.find((t) => t.key === key);
+  if (!tip || tipsDay !== todayKey()) return refresh(); // 자정을 넘겼다면 어제 고른 제안을 넣지 않고 새로 고른다
+  const { action } = tip;
+  if (action.kind === 'rest') {
+    skipPlan(action.id, action.day, true);
+    savedToast(`${tip.label.replace(' 쉬어 가기', '')}은 쉬어 가요. 쉬는 것도 계획이에요`, { label: '되돌리기', onClick: () => skipPlan(action.id, action.day, false) });
+    return;
+  }
+  const id = addPlan({ id: uid(), title: action.title, date: action.date, areaId: action.areaId, minutes: action.minutes, time: action.time });
+  if (!id) return toast('계획에 넣지 못했어요');
+  const today = todayKey();
+  const when = action.date === today ? '오늘' : action.date === addDays(today, 1) ? '내일' : fmtMonthDay(action.date);
+  savedToast(`${when}${action.time ? ` ${clockLabel(action.time)}` : ''} 계획에 '${action.title}'${josa(action.title, '을', '를')} 넣었어요`, { label: '되돌리기', onClick: () => replacePlans([id], []) });
 }
 
 function saveMark() {
@@ -578,6 +732,11 @@ export const on = {
     const { action, field, value, id } = button.dataset;
     if (action === 'mark-open') {
       openMarkForm();
+      refresh();
+      arrive(document.getElementById('view'));
+    } else if (action === 'tip-do') doTip(id);
+    else if (action === 'tip-skip') {
+      dismissTip(id, todayKey());
       refresh();
     } else if (action === 'mark-fuzz') {
       form.fuzz = Number(value);

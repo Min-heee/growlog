@@ -113,11 +113,11 @@ export function repeatLabel(days) {
   return DAY_ORDER.filter((d) => set.has(d)).map((d) => DAY_NAMES[d]).join('·');
 }
 
-/** 'HH:MM' → '오전 7시', '오후 7시 5분', '낮 12시', '밤 12시'. 틀린 값이면 '' */
+/** 'HH:MM' → '오전 7시', '오후 7시 5분', '낮 12시', '밤 12시', '새벽 1시'. 틀린 값이면 '' */
 export function clockLabel(hhmm) {
   if (typeof hhmm !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(hhmm)) return '';
   const [h, m] = hhmm.split(':').map(Number);
-  const part = h === 0 ? '밤' : h === 12 ? '낮' : h < 12 ? '오전' : '오후';
+  const part = h === 0 ? '밤' : h < 6 ? '새벽' : h === 12 ? '낮' : h < 12 ? '오전' : '오후';
   return `${part} ${h % 12 || 12}시${m ? ` ${m}분` : ''}`;
 }
 

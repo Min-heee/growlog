@@ -138,7 +138,7 @@ function supportCard(state, ctx) {
   if (low.length >= 10 && low.filter((e) => e.mood <= 2 || e.energy <= 2).length / low.length >= 0.75) return { id: 'H1', text: `기운이나 기분이 낮은 날이 이어졌네요. ${talk}` };
   if (gap < K.GAP_UNKNOWN && ctx.recent.hard && runDays(days, (d) => d.flagged) >= 14) return { id: 'H2', text: `요즘 쉽지 않은 날이 이어진 것 같아요. ${talk}` };
   const open = state.marks.filter((m) => m.sev >= 2 && !m.closedOn).map((m) => m.date).sort()[0];
-  if (open && open <= addDays(today, -28)) return { id: 'H5', text: `회복 중 표시가 이어지고 있어요. 괜찮아졌다면 지친 날 칸에서 이제 괜찮아졌어요를 눌러주세요. 아직 힘들다면 ${talk}` };
+  if (open && open <= addDays(today, -28)) return { id: 'H5', text: `회복 중 표시가 이어지고 있어요. 괜찮아졌다면 내 상태 탭 자세히의 지친 날 기록에서 이제 괜찮아졌어요를 눌러주세요. 아직 힘들다면 ${talk}` };
   const sleep = finite(lastDays(7).map((e) => e.tibH));
   if (state.profile.age === 'u18' && sleep.length >= 5 && avg(sleep) < 5) return { id: 'H6', text: `잠이 많이 부족한 날이 이어졌네요. ${talk}` };
   return null;
